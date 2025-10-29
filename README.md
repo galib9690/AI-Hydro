@@ -1,146 +1,378 @@
-<div align="center"><sub>
-English | <a href="https://github.com/cline/cline/blob/main/locales/es/README.md" target="_blank">Español</a> | <a href="https://github.com/cline/cline/blob/main/locales/de/README.md" target="_blank">Deutsch</a> | <a href="https://github.com/cline/cline/blob/main/locales/ja/README.md" target="_blank">日本語</a> | <a href="https://github.com/cline/cline/blob/main/locales/zh-cn/README.md" target="_blank">简体中文</a> | <a href="https://github.com/cline/cline/blob/main/locales/zh-tw/README.md" target="_blank">繁體中文</a> | <a href="https://github.com/cline/cline/blob/main/locales/ko/README.md" target="_blank">한국어</a>
-</sub></div>
-
-# Cline – \#1 on OpenRouter
+# AI-Hydro – Computational Research Platform for Hydrology
 
 <p align="center">
-  <img src="https://media.githubusercontent.com/media/cline/cline/main/assets/docs/demo.gif" width="100%" />
+  <img src="./assets/docs/aihydro-hero-static.png" alt="AI-Hydro" width="100%" />
 </p>
 
 <div align="center">
 <table>
 <tbody>
 <td align="center">
-<a href="https://marketplace.visualstudio.com/items?itemName=saoudrizwan.claude-dev" target="_blank"><strong>Download on VS Marketplace</strong></a>
+<a href="https://github.com/galib9690/AI-Hydro" target="_blank"><strong>GitHub Repository</strong></a>
 </td>
 <td align="center">
-<a href="https://discord.gg/cline" target="_blank"><strong>Discord</strong></a>
+<a href="https://github.com/galib9690/AI-Hydro/issues" target="_blank"><strong>Issues</strong></a>
 </td>
 <td align="center">
-<a href="https://www.reddit.com/r/cline/" target="_blank"><strong>r/cline</strong></a>
+<a href="https://github.com/galib9690/AI-Hydro/discussions" target="_blank"><strong>Discussions</strong></a>
 </td>
 <td align="center">
-<a href="https://github.com/cline/cline/discussions/categories/feature-requests?discussions_q=is%3Aopen+category%3A%22Feature+Requests%22+sort%3Atop" target="_blank"><strong>Feature Requests</strong></a>
+<a href="https://github.com/galib9690/AI-Hydro/discussions/categories/feature-requests" target="_blank"><strong>Feature Requests</strong></a>
 </td>
 <td align="center">
-<a href="https://docs.cline.bot/getting-started/for-new-coders" target="_blank"><strong>Getting Started</strong></a>
+<a href="https://github.com/galib9690/AI-Hydro/wiki" target="_blank"><strong>Documentation</strong></a>
 </td>
 </tbody>
 </table>
 </div>
 
-Meet Cline, an AI assistant that can use your **CLI** a**N**d **E**ditor.
+## Overview
 
-Thanks to [Claude Sonnet's agentic coding capabilities](https://www.anthropic.com/claude/sonnet), Cline can handle complex software development tasks step-by-step. With tools that let him create & edit files, explore large projects, use the browser, and execute terminal commands (after you grant permission), he can assist you in ways that go beyond code completion or tech support. Cline can even use the Model Context Protocol (MCP) to create new tools and extend his own capabilities. While autonomous AI scripts traditionally run in sandboxed environments, this extension provides a human-in-the-loop GUI to approve every file change and terminal command, providing a safe and accessible way to explore the potential of agentic AI.
+**AI-Hydro** is an intelligent computational environment for hydrology and Earth-system sciences research. Built as a VSCode extension on the Cline framework, AI-Hydro combines domain-specific Python tools, curated hydrological knowledge bases, and RAG-based intelligence to assist researchers in complex hydrological analyses.
 
-1. Enter your task and add images to convert mockups into functional apps or fix bugs with screenshots.
-2. Cline starts by analyzing your file structure & source code ASTs, running regex searches, and reading relevant files to get up to speed in existing projects. By carefully managing what information is added to context, Cline can provide valuable assistance even for large, complex projects without overwhelming the context window.
-3. Once Cline has the information he needs, he can:
-    - Create and edit files + monitor linter/compiler errors along the way, letting him proactively fix issues like missing imports and syntax errors on his own.
-    - Execute commands directly in your terminal and monitor their output as he works, letting him e.g., react to dev server issues after editing a file.
-    - For web development tasks, Cline can launch the site in a headless browser, click, type, scroll, and capture screenshots + console logs, allowing him to fix runtime errors and visual bugs.
-4. When a task is completed, Cline will present the result to you with a terminal command like `open -a "Google Chrome" index.html`, which you run with a click of a button.
+Unlike general-purpose coding assistants, AI-Hydro understands hydrology-specific concepts, workflows, and data structures. It provides **11 specialized tools** and **6 complete workflows** for watershed analysis, CAMELS attribute extraction, streamflow analysis, and more.
 
-> [!TIP]
-> Use the `CMD/CTRL + Shift + P` shortcut to open the command palette and type "Cline: Open In New Tab" to open the extension as a tab in your editor. This lets you use Cline side-by-side with your file explorer, and see how he changes your workspace more clearly.
+### What Makes AI-Hydro Special
+
+1. **Domain-Specific Tools**: 11 wrapper functions + 6 complete workflows for hydrology
+2. **RAG Intelligence**: Validated tool recommendations from curated knowledge base
+3. **Multi-Tier Architecture**: Progressive disclosure from workflows to tools to libraries
+4. **Reproducible Workflows**: Complete audit trails with workspace-isolated environments
+5. **Direct Data Access**: USGS NWIS, NLDI, 3DEP, GridMET, and more
+
+### Core Capabilities
+
+**Tier 2 Tools** (11 focused functions):
+- `delineate_watershed()` - Extract watershed boundaries
+- `extract_topographic_attributes()` - Elevation, slope, drainage stats
+- `extract_climate_indices()` - Precipitation, temperature, aridity
+- `extract_hydrological_signatures()` - Flow statistics, baseflow, timing
+- `extract_soil_attributes()` - Porosity, texture, depth
+- `extract_vegetation_attributes()` - LAI, land cover, GVF
+- `extract_geological_attributes()` - Lithology, permeability
+- `extract_geomorphic_parameters()` - 28 basin morphometry metrics
+- `fetch_streamflow_data()` - USGS streamflow retrieval
+- `fetch_climate_data()` - GridMET climate data
+- `fetch_forcing_data()` - Basin-averaged forcing
+
+**Tier 3 Workflows** (6 complete orchestrations):
+- `extract_camels_attributes()` - Complete CAMELS extraction (70+ attributes)
+- `fetch_hydrological_data()` - Multi-source data retrieval
+- `compute_all_signatures()` - Comprehensive signature calculation
+- `scientific_investigation()` - End-to-end watershed analysis
+- `auto_modeling()` - Automated hydrological modeling
+- `query_knowledge()` - RAG-powered knowledge search
 
 ---
 
+## Getting Started
+
+### Quick Example
+
+```python
+# Example 1: Delineate a watershed
+from ai_hydro.tools.watershed import delineate_watershed
+
+result = delineate_watershed('01031500')
+print(f"Watershed: {result['gauge_name']}")
+print(f"Area: {result['area_km2']:.1f} km²")
+
+# Example 2: Extract complete CAMELS attributes
+from ai_hydro.workflows.camels_extraction import extract_camels_attributes
+
+result = extract_camels_attributes(
+    gauge_id='01031500',
+    save_results=True,
+    output_dir='./results'
+)
+
+print(f"Extracted {len(result['attributes'])} attributes")
+print(f"Mean elevation: {result['attributes']['elev_mean']:.1f} m")
+print(f"Aridity: {result['attributes']['aridity']:.2f}")
+```
+
+### How It Works
+
+1. **Natural Language Request**: "Extract CAMELS attributes for gauge 01031500"
+2. **RAG Intelligence**: AI-Hydro queries knowledge base for relevant tools
+3. **Tool Selection**: Recommends `extract_camels_attributes()` workflow
+4. **Code Generation**: Creates Python script using validated tools
+5. **Execution**: Runs in isolated workspace virtual environment
+6. **Results**: Presents findings with visualizations and next steps
+
+
+---
+
+## Architecture
+
+### System Components
+
+```
+┌─────────────────────────────────────┐
+│  VSCode Extension (TypeScript)      │
+│  ├─ Chat Interface                  │
+│  ├─ RAG Service                     │
+│  ├─ Task Manager                    │
+│  └─ Workspace Manager               │
+└──────────────┬──────────────────────┘
+               │ JSON-RPC
+               ▼
+┌─────────────────────────────────────┐
+│  Python Package: ai-hydro           │
+│  ├─ tools/ (Tier 2 wrappers)     │
+│  ├─ workflows/ (Tier 3 workflows) │
+│  ├─ rag/ (RAG engine)               │
+│  ├─ registry/ (tool discovery)      │
+│  └─ knowledge/ (domain knowledge)   │
+└──────────────┬──────────────────────┘
+               │ API calls
+               ▼
+┌─────────────────────────────────────┐
+│  External Data Sources              │
+│  USGS, GridMET, 3DEP, MODIS, etc.   │
+└─────────────────────────────────────┘
+```
+
+### Package Structure (Just the Domain Specific Python Package)
+
+```
+python/ai_hydro/
+├── tools/          # Tier 2: Single-purpose wrappers
+│   ├── watershed.py
+│   ├── hydrology.py
+│   ├── climate.py
+│   ├── soil.py
+│   ├── vegetation.py
+│   ├── geology.py
+│   ├── topography.py
+│   ├── geomorphic.py
+│   └── forcing.py
+├── workflows/      # Tier 3: Complete workflows
+│   ├── camels_extraction.py
+│   ├── fetch_data.py
+│   ├── compute_signatures.py
+│   ├── investigation.py
+│   ├── modeling.py
+│   └── rag_search.py
+├── rag/            # RAG engine with validation
+│   ├── engine.py
+│   ├── embeddings.py
+│   └── knowledge_loader.py
+├── registry/       # Tool/workflow discovery
+├── knowledge/      # Domain knowledge (JSON)
+└── utils/          # Validators, helpers
+```
+
+---
+
+## Features
+
 <img align="right" width="340" src="https://github.com/user-attachments/assets/3cf21e04-7ce9-4d22-a7b9-ba2c595e88a4">
 
-### Use any API and Model
+### Hydrology-Aware AI Models
 
-Cline supports API providers like OpenRouter, Anthropic, OpenAI, Google Gemini, AWS Bedrock, Azure, GCP Vertex, Cerebras and Groq. You can also configure any OpenAI compatible API, or use a local model through LM Studio/Ollama. If you're using OpenRouter, the extension fetches their latest model list, allowing you to use the newest models as soon as they're available.
+AI-Hydro works with leading AI providers (Anthropic, OpenAI, Google, AWS Bedrock) but enhances them with domain-specific knowledge:
 
-The extension also keeps track of total tokens and API usage cost for the entire task loop and individual requests, keeping you informed of spend every step of the way.
+- Watershed delineation concepts
+- CAMELS attribute definitions
+- Hydrological signatures
+- Water balance equations
+- Common modeling approaches
 
-<!-- Transparent pixel to create line break after floating image -->
+The extension tracks API usage and provides cost transparency.
 
 <img width="2000" height="0" src="https://github.com/user-attachments/assets/ee14e6f7-20b8-4391-9091-8e8e25561929"><br>
 
 <img align="left" width="370" src="https://github.com/user-attachments/assets/81be79a8-1fdb-4028-9129-5fe055e01e76">
 
-### Run Commands in Terminal
+### Execute Hydrological Workflows
 
-Thanks to the new [shell integration updates in VSCode v1.93](https://code.visualstudio.com/updates/v1_93#_terminal-shell-integration-api), Cline can execute commands directly in your terminal and receive the output. This allows him to perform a wide range of tasks, from installing packages and running build scripts to deploying applications, managing databases, and executing tests, all while adapting to your dev environment & toolchain to get the job done right.
+AI-Hydro executes Python scripts in isolated workspace environments:
 
-For long running processes like dev servers, use the "Proceed While Running" button to let Cline continue in the task while the command runs in the background. As Cline works he’ll be notified of any new terminal output along the way, letting him react to issues that may come up, such as compile-time errors when editing files.
+- Install required packages (geopandas, rasterio, etc.)
+- Run complete workflows (CAMELS extraction)
+- Process large datasets
+- Manage long-running computations
 
-<!-- Transparent pixel to create line break after floating image -->
+For long-running processes, use "Proceed While Running" to continue working.
 
 <img width="2000" height="0" src="https://github.com/user-attachments/assets/ee14e6f7-20b8-4391-9091-8e8e25561929"><br>
 
 <img align="right" width="400" src="https://github.com/user-attachments/assets/c5977833-d9b8-491e-90f9-05f9cd38c588">
 
-### Create and Edit Files
+### Create and Edit Analysis Scripts
 
-Cline can create and edit files directly in your editor, presenting you a diff view of the changes. You can edit or revert Cline's changes directly in the diff view editor, or provide feedback in chat until you're satisfied with the result. Cline also monitors linter/compiler errors (missing imports, syntax errors, etc.) so he can fix issues that come up along the way on his own.
+AI-Hydro generates Python scripts following hydrological best practices:
 
-All changes made by Cline are recorded in your file's Timeline, providing an easy way to track and revert modifications if needed.
+- Presents changes in diff view
+- Monitors for errors automatically
+- Handles missing data appropriately
+- Validates coordinate reference systems
+- Ensures proper imports
 
-<!-- Transparent pixel to create line break after floating image -->
+All changes tracked in Timeline for reproducibility.
 
 <img width="2000" height="0" src="https://github.com/user-attachments/assets/ee14e6f7-20b8-4391-9091-8e8e25561929"><br>
 
 <img align="left" width="370" src="https://github.com/user-attachments/assets/bc2e85ba-dfeb-4fe6-9942-7cfc4703cbe5">
 
-### Use the Browser
+### Visualize Results
 
-With Claude Sonnet's new [Computer Use](https://www.anthropic.com/news/3-5-models-and-computer-use) capability, Cline can launch a browser, click elements, type text, and scroll, capturing screenshots and console logs at each step. This allows for interactive debugging, end-to-end testing, and even general web use! This gives him autonomy to fixing visual bugs and runtime issues without you needing to handhold and copy-pasting error logs yourself.
+Create interactive visualizations using plotly, matplotlib:
 
-Try asking Cline to "test the app", and watch as he runs a command like `npm run dev`, launches your locally running dev server in a browser, and performs a series of tests to confirm that everything works. [See a demo here.](https://x.com/sdrzn/status/1850880547825823989)
-
-<!-- Transparent pixel to create line break after floating image -->
-
-<img width="2000" height="0" src="https://github.com/user-attachments/assets/ee14e6f7-20b8-4391-9091-8e8e25561929"><br>
-
-<img align="right" width="350" src="https://github.com/user-attachments/assets/ac0efa14-5c1f-4c26-a42d-9d7c56f5fadd">
-
-### "add a tool that..."
-
-Thanks to the [Model Context Protocol](https://github.com/modelcontextprotocol), Cline can extend his capabilities through custom tools. While you can use [community-made servers](https://github.com/modelcontextprotocol/servers), Cline can instead create and install tools tailored to your specific workflow. Just ask Cline to "add a tool" and he will handle everything, from creating a new MCP server to installing it into the extension. These custom tools then become part of Cline's toolkit, ready to use in future tasks.
-
--   "add a tool that fetches Jira tickets": Retrieve ticket ACs and put Cline to work
--   "add a tool that manages AWS EC2s": Check server metrics and scale instances up or down
--   "add a tool that pulls the latest PagerDuty incidents": Fetch details and ask Cline to fix bugs
-
-<!-- Transparent pixel to create line break after floating image -->
+- Hydrographs and flow duration curves
+- Watershed boundary maps
+- CAMELS attribute correlations
+- Model performance metrics
+- Interactive dashboards
 
 <img width="2000" height="0" src="https://github.com/user-attachments/assets/ee14e6f7-20b8-4391-9091-8e8e25561929"><br>
 
-<img align="left" width="360" src="https://github.com/user-attachments/assets/7fdf41e6-281a-4b4b-ac19-020b838b6970">
+<img align="right" width="350" src="https://github.com/user-attachments/assets/7fdf41e6-281a-4b4b-ac19-020b838b6970">
 
-### Add Context
+### Add Research Context
 
-**`@url`:** Paste in a URL for the extension to fetch and convert to markdown, useful when you want to give Cline the latest docs
+**`@url`:** Paste documentation URLs (USGS API docs, model manuals)
 
-**`@problems`:** Add workspace errors and warnings ('Problems' panel) for Cline to fix
+**`@problems`:** Add analysis errors for diagnosis
 
-**`@file`:** Adds a file's contents so you don't have to waste API requests approving read file (+ type to search files)
+**`@file`:** Add data files, configurations, results
 
-**`@folder`:** Adds folder's files all at once to speed up your workflow even more
-
-<!-- Transparent pixel to create line break after floating image -->
+**`@folder`:** Add entire project folders
 
 <img width="2000" height="0" src="https://github.com/user-attachments/assets/ee14e6f7-20b8-4391-9091-8e8e25561929"><br>
 
-<img align="right" width="350" src="https://github.com/user-attachments/assets/140c8606-d3bf-41b9-9a1f-4dbf0d4c90cb">
+<img align="left" width="360" src="https://github.com/user-attachments/assets/140c8606-d3bf-41b9-9a1f-4dbf0d4c90cb">
 
-### Checkpoints: Compare and Restore
+### Research Checkpoints
 
-As Cline works through a task, the extension takes a snapshot of your workspace at each step. You can use the 'Compare' button to see a diff between the snapshot and your current workspace, and the 'Restore' button to roll back to that point.
+AI-Hydro takes git-based snapshots at each step:
 
-For example, when working with a local web server, you can use 'Restore Workspace Only' to quickly test different versions of your app, then use 'Restore Task and Workspace' when you find the version you want to continue building from. This lets you safely explore different approaches without losing progress.
-
-<!-- Transparent pixel to create line break after floating image -->
+- Use 'Compare' to see changes
+- 'Restore' to roll back
+- Ensure reproducibility
+- Test different configurations
 
 <img width="2000" height="0" src="https://github.com/user-attachments/assets/ee14e6f7-20b8-4391-9091-8e8e25561929"><br>
+
+---
+
+## Example Research Workflows
+
+### Watershed Analysis
+```
+"Analyze hydrological characteristics of USGS gage 01646500 
+using CAMELS attributes and compute flow duration curves"
+```
+
+### Model Calibration
+```
+"Extract CAMELS attributes for gauge 01031500 and prepare 
+forcing data for hydrological modeling"
+```
+
+### Comparative Studies
+```
+"Compare rainfall-runoff responses across CAMELS basins 
+and identify key controlling attributes"
+```
+
+---
+
+## Python Package Installation
+
+The `ai-hydro` Python package is automatically installed in your workspace's virtual environment. To install manually:
+
+```bash
+# From the repository root
+cd python
+pip install -e .
+
+# Or install from PyPI (when available)
+pip install ai-hydro
+```
+
+### Dependencies
+
+**Core:** numpy, pandas, xarray, scipy  
+**Geospatial:** geopandas, rasterio, shapely, pyproj  
+**Hydro Data:** pygeohydro, pynhd, py3dep, pygridmet  
+**RAG:** langchain, chromadb, sentence-transformers  
+**Visualization:** matplotlib, plotly, folium  
+
+See `python/pyproject.toml` for complete list.
+
+---
+
+## Documentation
+
+- **Architecture**: See `AI_HYDRO_COMPLETE_WORKFLOW_ARCHITECTURE.md`
+- **Tools Guide**: See `AI_HYDRO_CAMELS_TOOLS_GUIDE.md`
+- **RAG System**: See `AI_HYDRO_BRAIN_AND_RAG_GUIDE.md`
+- **Correct Tools**: See `.clinerules/correct-tools.md`
+
+---
 
 ## Contributing
 
-To contribute to the project, start with our [Contributing Guide](CONTRIBUTING.md) to learn the basics. You can also join our [Discord](https://discord.gg/cline) to chat with other contributors in the `#contributors` channel. If you're looking for full-time work, check out our open positions on our [careers page](https://cline.bot/join-us)!
+To contribute to AI-Hydro, check our [Contributing Guide](CONTRIBUTING.md). Join our [Discord](https://discord.gg/ai-hydro) to discuss in the `#contributors` channel.
+
+### Development Setup
+
+```bash
+# Clone repository
+git clone https://github.com/galib9690/AI-Hydro.git
+cd AI-Hydro
+
+# Install VSCode extension dependencies
+npm install
+
+# Install Python package in editable mode
+cd python
+pip install -e ".[dev]"
+
+# Run tests
+pytest tests/
+```
+
+---
+
+## Citation
+
+If you use AI-Hydro in your research, please cite:
+
+```bibtex
+@software{aihydro2025,
+  title = {AI-Hydro: An Intelligent Computational Environment for Hydrology Research},
+  author = {Galib, Mohammad and AI-Hydro Research Team},
+  year = {2025},
+  url = {https://github.com/galib9690/AI-Hydro},
+  version = {1.0.0}
+}
+```
+
+---
 
 ## License
 
-[Apache 2.0 © 2025 Cline Bot Inc.](./LICENSE)
+[Apache 2.0 © 2025 AI-Hydro Research Team](./LICENSE)
+
+---
+
+## Built on Open Source
+
+AI-Hydro is built on [Cline](https://github.com/cline/cline), an open-source autonomous coding agent. We're grateful to the Cline community for creating the agentic framework that makes domain-specific research assistants like AI-Hydro possible.
+
+---
+
+## Support
+
+- **Issues**: [GitHub Issues](https://github.com/galib9690/AI-Hydro/issues)
+- **Discussions**: [GitHub Discussions](https://github.com/galib9690/AI-Hydro/discussions)
+- **Email**: mgalib@purdue.edu
+
+---
+
+**Version**: 1.0.0  
+**Last Updated**: January 2025  
+**Maintainer**: Mohammad Galib (mgalib@purdue.edu)
