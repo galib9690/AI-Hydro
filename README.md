@@ -30,11 +30,11 @@
 
 **AI-Hydro** is an intelligent computational environment for hydrology and Earth-system sciences research. Built as a VSCode extension on the Cline framework, AI-Hydro combines domain-specific Python tools, curated hydrological knowledge bases, and RAG-based intelligence to assist researchers in complex hydrological analyses.
 
-Unlike general-purpose coding assistants, AI-Hydro understands hydrology-specific concepts, workflows, and data structures. It provides **11 specialized tools** and **6 complete workflows** for watershed analysis, CAMELS attribute extraction, streamflow analysis, and more.
+Unlike general-purpose coding assistants, AI-Hydro understands hydrology-specific concepts, workflows, and data structures. As if now, it provides **12+ specialized tools** and **6+ complete workflows** for watershed analysis, CAMELS attribute extraction, streamflow analysis, and more.
 
 ### What Makes AI-Hydro Special
 
-1. **Domain-Specific Tools**: 11 wrapper functions + 6 complete workflows for hydrology
+1. **Domain-Specific Tools**: 12+ wrapper functions + 6+ complete workflows for hydrology
 2. **RAG Intelligence**: Validated tool recommendations from curated knowledge base
 3. **Multi-Tier Architecture**: Progressive disclosure from workflows to tools to libraries
 4. **Reproducible Workflows**: Complete audit trails with workspace-isolated environments
