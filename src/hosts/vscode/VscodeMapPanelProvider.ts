@@ -1157,6 +1157,9 @@ export class VscodeMapPanelProvider {
 <body>
 	<div id="root"></div>
 	<script nonce="${nonce}">
+		if (typeof window.CSSStyleSheet === "undefined") {
+			window.CSSStyleSheet = function CSSStyleSheet() {};
+		}
 		// Set standalone map mode flag
 		window.AIHYDRO_MAP_STANDALONE = true;
 	</script>

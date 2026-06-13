@@ -203,6 +203,9 @@ export class VscodeExperimentTableProvider {
 <body>
 	<div id="root"></div>
 	<script nonce="${nonce}">
+		if (typeof window.CSSStyleSheet === "undefined") {
+			window.CSSStyleSheet = function CSSStyleSheet() {};
+		}
 		window.AIHYDRO_EXPERIMENT_TABLE_STANDALONE = true;
 	</script>
 	<script type="module" nonce="${nonce}" src="${scriptUri}"></script>

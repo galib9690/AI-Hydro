@@ -2,11 +2,15 @@ import type { Boolean, EmptyRequest } from "@shared/proto/cline/common"
 import { Component, lazy, type ReactNode, Suspense, useEffect } from "react"
 import ChatView from "./components/chat/ChatView"
 import ConnectorsView from "./components/connectors/ConnectorsView"
-import { EvidenceBoard } from "./components/evidence-board/EvidenceBoard"
-import { ExperimentTable } from "./components/experiment-table/ExperimentTable"
 import HistoryView from "./components/history/HistoryView"
 import HtmlPreviewPanel from "./components/html_preview/HtmlPreviewPanel"
 
+const EvidenceBoard = lazy(() =>
+	import("./components/evidence-board/EvidenceBoard").then((mod) => ({ default: mod.EvidenceBoard })),
+)
+const ExperimentTable = lazy(() =>
+	import("./components/experiment-table/ExperimentTable").then((mod) => ({ default: mod.ExperimentTable })),
+)
 const MapPanel = lazy(() => import("./components/map/MapPanel"))
 const MapView = lazy(() => import("./components/map/MapView"))
 
@@ -199,7 +203,9 @@ const App = () => {
 	if (isStandaloneEvidenceBoardMode()) {
 		return (
 			<Providers>
-				<EvidenceBoard />
+				<Suspense fallback={null}>
+					<EvidenceBoard />
+				</Suspense>
 			</Providers>
 		)
 	}
@@ -208,7 +214,9 @@ const App = () => {
 	if (isStandaloneExperimentTableMode()) {
 		return (
 			<Providers>
-				<ExperimentTable />
+				<Suspense fallback={null}>
+					<ExperimentTable />
+				</Suspense>
 			</Providers>
 		)
 	}
