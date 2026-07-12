@@ -110,19 +110,23 @@ export abstract class WebviewProvider {
 				<link rel="stylesheet" type="text/css" href="${stylesUrl}">
 				<link href="${codiconsUrl}" rel="stylesheet" />
 				<meta http-equiv="Content-Security-Policy" content="default-src 'none';
-					connect-src https://*.posthog.com https://*.cline.bot https://*.firebaseauth.com https://*.firebaseio.com https://*.googleapis.com https://*.firebase.com;
+					connect-src ${this.getCspSource()} https://*.posthog.com https://*.cline.bot https://*.firebaseauth.com https://*.firebaseio.com https://*.googleapis.com https://*.firebase.com;
 					font-src ${this.getCspSource()} data:;
 					style-src ${this.getCspSource()} 'unsafe-inline';
 					img-src ${this.getCspSource()} https: data:;
-					script-src 'nonce-${nonce}' 'unsafe-eval';
+					script-src ${this.getCspSource()} 'nonce-${nonce}' 'unsafe-eval';
 					frame-src 'self' blob:;">
 				<title>AI-Hydro</title>
 			</head>
 			<body>
 				<noscript>You need to enable JavaScript to run this app.</noscript>
 				<div id="root"></div>
+				<script nonce="${nonce}">
+					if (typeof window.CSSStyleSheet === "undefined") {
+						window.CSSStyleSheet = function CSSStyleSheet() {};
+					}
+				</script>
 				<script type="module" nonce="${nonce}" src="${scriptUrl}"></script>
-				<script src="http://localhost:8097"></script> 
 			</body>
 		</html>
 		`
@@ -221,6 +225,11 @@ export abstract class WebviewProvider {
 				</head>
 				<body>
 					<div id="root"></div>
+					<script nonce="${nonce}">
+						if (typeof window.CSSStyleSheet === "undefined") {
+							window.CSSStyleSheet = function CSSStyleSheet() {};
+						}
+					</script>
 					${reactRefresh}
 					<script type="module" src="${scriptUrl}"></script>
 				</body>

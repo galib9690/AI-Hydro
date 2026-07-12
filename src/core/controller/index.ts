@@ -1,5 +1,6 @@
 import { Anthropic } from "@anthropic-ai/sdk"
 import { buildApiHandler } from "@core/api"
+import { LedgerEventWatcher } from "@core/ledger/LedgerEventWatcher"
 import { MapCommandWatcher } from "@core/map/MapCommandWatcher"
 import { MapEventWatcher } from "@core/map/MapEventWatcher"
 import { buildMapLayerCatalogAsync, persistMapLayerCatalog } from "@core/map/mapLayerCatalog"
@@ -9,6 +10,7 @@ import { detectWorkspaceRoots } from "@core/workspace/detection"
 import { FileScanner, WorkspaceGeoJsonFile } from "@core/workspace/FileScanner"
 import { setupWorkspaceManager } from "@core/workspace/setup"
 import { WorkspaceRootManager } from "@core/workspace/WorkspaceRootManager"
+import { getBoundStudy } from "@integrations/aihydro-session/boundStudy"
 import { cleanupLegacyCheckpoints } from "@integrations/checkpoints/CheckpointMigration"
 import { downloadTask } from "@integrations/misc/export-markdown"
 import { AiHydroAccountService } from "@services/account/AiHydroAccountService"
@@ -24,6 +26,7 @@ import { ExtensionState, Platform } from "@shared/ExtensionMessage"
 import { HistoryItem } from "@shared/HistoryItem"
 import { McpMarketplaceCatalog } from "@shared/mcp"
 import { HtmlPreviewItem, HtmlPreviewMode, LearningModuleCatalog } from "@shared/proto/cline/html_preview"
+import type { ClaimUpdate } from "@shared/proto/cline/ledger"
 import { MapLayer } from "@shared/proto/cline/map"
 import { Settings } from "@shared/storage/state-keys"
 import { Mode } from "@shared/storage/types"
@@ -108,6 +111,8 @@ export class Controller {
 	private mapLayerSubscribers: Set<(layer: MapLayer) => void> = new Set()
 	private mapEventWatcher: MapEventWatcher
 	private mapCommandWatcher: MapCommandWatcher
+	private ledgerEventWatcher: LedgerEventWatcher
+	private claimUpdateSubscribers: Set<(update: ClaimUpdate) => void> = new Set()
 	readonly mapSessionService: MapSessionService
 	readonly previewSessionService: PreviewSessionService
 	private previewCommandWatcher?: PreviewCommandWatcher
@@ -205,6 +210,8 @@ export class Controller {
 		this.previewCommandWatcher.start()
 		this.mapCommandWatcher = new MapCommandWatcher(this)
 		this.mapCommandWatcher.start()
+		this.ledgerEventWatcher = new LedgerEventWatcher(this)
+		this.ledgerEventWatcher.start()
 		StateManager.get().registerCallbacks({
 			onPersistenceError: async ({ error }: PersistenceErrorEvent) => {
 				console.error("[Controller] Cache persistence failed, recovering:", error)
@@ -264,8 +271,9 @@ export class Controller {
 			this.remoteConfigTimer = undefined
 		}
 
-		// Stop map event watcher
+		// Stop map and ledger event watchers
 		this.mapEventWatcher.stop()
+		this.ledgerEventWatcher.stop()
 
 		// Dispose file scanner
 		if (this.fileScanner) {
@@ -773,15 +781,23 @@ export class Controller {
 			})
 			if (!response.data) throw new Error("Invalid response from Modules marketplace API")
 			const recognitionCounts = await MarketplaceRecognitionService.getCounts("modules")
+			const { readModuleRegistry } = await import("@/services/htmlPreview/moduleRegistry")
+			const moduleRegistry = await readModuleRegistry()
 			const catalog: LearningModuleCatalog = {
 				items: (Array.isArray(response.data) ? response.data : []).map((item: any) => {
 					const moduleId = item.moduleId || item.id || ""
 					const counts = recognitionCounts.get(moduleId)
+					const remoteVersion = item.version || "0.1.0"
+					const installedEntry = moduleRegistry[moduleId]
+					// Standalone update awareness only: a course-tagged module is updated
+					// via its course card, never via a stray standalone "Update" button.
+					const isStandalone = !!installedEntry && !installedEntry.courseId
+					const updateAvailable = isStandalone && !!installedEntry?.version && installedEntry.version !== remoteVersion
 					return {
 						moduleId,
 						title: item.title || "",
 						description: item.description || "",
-						version: item.version || "0.1.0",
+						version: remoteVersion,
 						author: item.author || "",
 						license: item.license || "CC-BY-4.0",
 						topic: item.topic || "",
@@ -794,7 +810,9 @@ export class Controller {
 						authorUrl: item.authorUrl || item.author_url || "",
 						citation: item.citation || "",
 						citationUrl: item.citationUrl || item.citation_url || "",
-						isInstalled: false,
+						isInstalled: !!installedEntry,
+						installedVersion: installedEntry?.version || "",
+						updateAvailable,
 						createdAt: item.createdAt || item.created_at || "",
 						updatedAt: item.updatedAt || item.updated_at || "",
 						downloadCount: item.downloadCount || item.download_count || 0,
@@ -840,6 +858,9 @@ export class Controller {
 				// no modules installed yet
 			}
 			const installedIds = new Set(Object.keys(registry))
+			const { readCourseRegistry } = await import("@/services/htmlPreview/moduleRegistry")
+			const courseRegistry = await readCourseRegistry()
+			const recognitionCounts = await MarketplaceRecognitionService.getCounts("courses")
 
 			const items = await Promise.all(
 				(Array.isArray(response.data) ? response.data : []).map(async (item: any) => {
@@ -893,9 +914,46 @@ export class Controller {
 					isFeatured: item.isFeatured || item.is_featured || false,
 					createdAt: item.createdAt || item.created_at || "",
 					updatedAt: item.updatedAt || item.updated_at || "",
+					topic: item.topic || "",
 					modules,
 					modulesCompleted,
 					isInstalled: courseInstalled,
+					installedVersion: courseRegistry[item.courseId || item.course_id || item.id || ""]?.version || "",
+					updateAvailable: (() => {
+						const cid = item.courseId || item.course_id || item.id || ""
+						const inst = courseRegistry[cid]
+						return !!inst?.version && inst.version !== (item.version || "0.1.0")
+					})(),
+					aiHydroInstalls: Number(
+						recognitionCounts.get(item.courseId || item.course_id || item.id || "")?.events.install ?? 0,
+					),
+					aiHydroStars: (() => {
+						const c = recognitionCounts.get(item.courseId || item.course_id || item.id || "")
+						return Number(c?.aiHydroStars ?? c?.events.star ?? 0)
+					})(),
+					starredByClient: Boolean(
+						recognitionCounts.get(item.courseId || item.course_id || item.id || "")?.starredByClient ?? false,
+					),
+					// Rich author / trust / citation metadata (parity with the Research Gallery).
+					contributors: (() => {
+						const raw = Array.isArray(item.contributors) ? item.contributors : authors
+						return raw.map((c: any) => ({
+							name: c.name || "",
+							github: c.github || c.githubUsername || "",
+							orcid: c.orcid || "",
+							affiliation: c.affiliation || "",
+							profileUrl: c.profileUrl || c.profile_url || "",
+							url: c.url || "",
+							website: c.website || "",
+							linkedin: c.linkedin || "",
+							googleScholar: c.googleScholar || c.google_scholar || "",
+							roles: Array.isArray(c.roles) ? c.roles : [],
+						}))
+					})(),
+					trustLevel: item.trustLevel || item.trust_level || "community",
+					citation: item.citation || "",
+					citationUrl: item.citationUrl || item.citation_url || "",
+					authorUrl: item.authorUrl || item.author_url || authors[0]?.profileUrl || authors[0]?.url || "",
 				})),
 			)
 			return CourseCatalog.create({ items })
@@ -1144,6 +1202,10 @@ export class Controller {
 		const currentTaskItem = this.task?.taskId ? (taskHistory || []).find((item) => item.id === this.task?.taskId) : undefined
 		const aihydroMessages = this.task?.messageStateHandler.getAiHydroMessages() || []
 		const checkpointManagerErrorMessage = this.task?.taskState.checkpointManagerErrorMessage
+		// Resolve the ai-hydro study bound to this chat for the header chip. Keyed by
+		// the task ulid (the injected _chat_id), NOT taskId — the two differ. Recomputed
+		// on every state post, so it tracks bindings created mid-conversation.
+		const boundStudy = getBoundStudy(this.task?.ulid)
 
 		const processedTaskHistory = (taskHistory || [])
 			.filter((item) => item.ts && item.task)
@@ -1168,6 +1230,7 @@ export class Controller {
 			apiConfiguration,
 			currentTaskItem,
 			aihydroMessages,
+			boundStudy,
 			currentFocusChainChecklist: this.task?.taskState.currentFocusChainChecklist || null,
 			checkpointManagerErrorMessage,
 			autoApprovalSettings,
@@ -1402,6 +1465,33 @@ export class Controller {
 		return () => {
 			console.log("[Controller] Layer subscription removed")
 			this.mapLayerSubscribers.delete(callback)
+		}
+	}
+
+	// ─── Ledger / claims management ─────────────────────────────────────────
+
+	/**
+	 * Called by LedgerEventWatcher when a claim event arrives from the MCP server.
+	 * Broadcasts the update to all subscribeToClaimUpdates() streaming subscribers.
+	 */
+	notifyClaimUpdate(update: ClaimUpdate): void {
+		for (const cb of this.claimUpdateSubscribers) {
+			try {
+				cb(update)
+			} catch (err) {
+				console.error("[Controller] claimUpdateSubscribers callback error:", err)
+			}
+		}
+	}
+
+	/**
+	 * Subscribe to claim updates from the MCP ledger.
+	 * @returns Unsubscribe function.
+	 */
+	subscribeToClaimUpdates(callback: (update: ClaimUpdate) => void): () => void {
+		this.claimUpdateSubscribers.add(callback)
+		return () => {
+			this.claimUpdateSubscribers.delete(callback)
 		}
 	}
 

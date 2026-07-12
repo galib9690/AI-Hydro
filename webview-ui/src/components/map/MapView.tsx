@@ -1,19 +1,40 @@
-import type { MapViewState } from "@deck.gl/core"
+import { type MapViewState, WebMercatorViewport } from "@deck.gl/core"
 import { TileLayer } from "@deck.gl/geo-layers"
-import { BitmapLayer, GeoJsonLayer, TextLayer } from "@deck.gl/layers"
+import { BitmapLayer, GeoJsonLayer, PathLayer, TextLayer } from "@deck.gl/layers"
 import DeckGL from "@deck.gl/react"
 import { EmptyRequest } from "@shared/proto/cline/common"
 import type { MapLayer } from "@shared/proto/cline/map"
-import { AddMapLayerRequest, SaveRoiToWorkspaceRequest } from "@shared/proto/cline/map"
+import { AddMapLayerRequest, RemoveMapLayerRequest, SaveRoiToWorkspaceRequest } from "@shared/proto/cline/map"
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react"
 import { useMapContext } from "../../context/MapContext"
 import { MapServiceClient } from "../../services/grpc-client"
+import AnnotationsPanel from "./AnnotationsPanel"
+import {
+	type AnnotationCollection,
+	loadAnnotations,
+	loadAnnotationsFromHost,
+	type MapAnnotation,
+	newAnnotation,
+	saveAnnotations,
+	seedAnnotationsFromGeoJson,
+} from "./annotationStorage"
 import { BASE_MAP_STYLES } from "./BaseMapSelector"
 import FeatureIdentifier, { type ClickedFeature, type MapInspectPoint } from "./FeatureIdentifier"
 import { loadAndPushFileEntries, loadAndPushFiles } from "./formats"
 import { applyColormap, dataUrlToImage, rasterCache, rasterRecolorInFlight } from "./formats/rasterCache"
+import {
+	addToMyGallery,
+	loadBookmarks,
+	loadMyGallery,
+	type MapScenePayload,
+	type MyGalleryItem,
+	removeFromMyGallery,
+	toggleBookmark,
+	updateMyGalleryItem,
+} from "./galleryStorage"
 import { collectFeaturesAtPoint } from "./geoInspect"
 import { fmtDist, haversineKm } from "./geoMeasureMath"
+import MapContextMenu from "./MapContextMenu"
 import MapLegend from "./MapLegend"
 import { MapToolRibbon } from "./MapToolRibbon"
 import MeasureTool, { type MeasureMode } from "./MeasureTool"
@@ -23,7 +44,11 @@ import { sendHydroMapCommand } from "./mapHydrologyBridge"
 import { type CursorRasterReading, getLayerBounds, isGeoJsonLayer, sampleTopRasterAtPoint } from "./mapLayerAdapters"
 import { reportBasemapChanged, reportMapEvent, reportVisibleLayers } from "./mapSessionBridge"
 import { loadMapWorkspace, saveMapWorkspace } from "./mapWorkspace"
+import ResearchGalleryPanel, { type GalleryImportCallbacks } from "./ResearchGalleryPanel"
 import SearchBar from "./SearchBar"
+import SwipePanel from "./SwipePanel"
+import TransectsPanel from "./TransectsPanel"
+import { loadTransects, type MapTransect, newTransect, saveTransects, type TransectCollection } from "./transectStorage"
 import VectorDrawTool, { type CompletedVectorDraw, type VectorDrawMode } from "./VectorDrawTool"
 import VectorSavePanel from "./VectorSavePanel"
 
@@ -47,13 +72,19 @@ const MERIT_CATCHMENT_COLOR_RAMP: Array<[number, number, number]> = [
 ]
 
 function featureNumber(props: Record<string, unknown> | undefined, keys: string[]): number | undefined {
-	if (!props) return undefined
+	if (!props) {
+		return undefined
+	}
 	for (const key of keys) {
 		const value = props[key]
-		if (typeof value === "number" && Number.isFinite(value)) return value
+		if (typeof value === "number" && Number.isFinite(value)) {
+			return value
+		}
 		if (typeof value === "string") {
 			const parsed = Number(value)
-			if (Number.isFinite(parsed)) return parsed
+			if (Number.isFinite(parsed)) {
+				return parsed
+			}
 		}
 	}
 	return undefined
@@ -62,7 +93,9 @@ function featureNumber(props: Record<string, unknown> | undefined, keys: string[
 function selectedMeritUpareaKm2(features: ClickedFeature[]): number | undefined {
 	for (const feature of features) {
 		const uparea = featureNumber(feature.properties, ["uparea", "UPAREA", "upArea", "UpArea"])
-		if (uparea !== undefined && uparea > 0) return uparea
+		if (uparea !== undefined && uparea > 0) {
+			return uparea
+		}
 	}
 	return undefined
 }
@@ -162,9 +195,15 @@ function meritLayerKind(layer: MapLayer): "rivers" | "catchments" | "level2" | u
 		return explicit
 	}
 	const idName = `${layer.id} ${layer.name}`.toLowerCase()
-	if (idName.includes("merit-rivers") || idName.includes("merit rivers")) return "rivers"
-	if (idName.includes("merit-catchments") || idName.includes("merit catchments")) return "catchments"
-	if (idName.includes("merit-level2") || idName.includes("pfaf basins")) return "level2"
+	if (idName.includes("merit-rivers") || idName.includes("merit rivers")) {
+		return "rivers"
+	}
+	if (idName.includes("merit-catchments") || idName.includes("merit catchments")) {
+		return "catchments"
+	}
+	if (idName.includes("merit-level2") || idName.includes("pfaf basins")) {
+		return "level2"
+	}
 	return undefined
 }
 
@@ -388,7 +427,7 @@ const clusterGeoJSON = (geojson: any, zoom: number): any => {
 	return { type: "FeatureCollection" as const, features }
 }
 
-const featureContainsPoint = (feature: any, lon: number, lat: number): boolean => {
+const _featureContainsPoint = (feature: any, lon: number, lat: number): boolean => {
 	const point: [number, number] = [lon, lat]
 	const geometry = feature?.geometry
 
@@ -594,6 +633,10 @@ export const MapView: React.FC<MapViewProps> = ({ mapStyle = "dark" }) => {
 	const [exportOpen, setExportOpen] = useState(false)
 	const [galleryOpen, setGalleryOpen] = useState(false)
 	const [saveVectorBusy, setSaveVectorBusy] = useState(false)
+
+	// My Gallery
+	const [myGallery, setMyGallery] = useState<MyGalleryItem[]>(() => loadMyGallery())
+	const [bookmarkedIds, setBookmarkedIds] = useState<string[]>(() => loadBookmarks())
 	// Point clustering — layers that should cluster dense point data at low zoom
 	const [clusterLayerIds, setClusterLayerIds] = useState<Set<string>>(new Set(persisted.clusterLayerIds ?? []))
 	const [measureGeometry, setMeasureGeometry] = useState<any>(null)
@@ -615,6 +658,76 @@ export const MapView: React.FC<MapViewProps> = ({ mapStyle = "dark" }) => {
 
 	const measureClickRef = useRef<((coord: [number, number]) => void) | null>(null)
 	const drawClickRef = useRef<((coord: [number, number]) => void) | null>(null)
+	const transectClickRef = useRef<((coord: [number, number]) => void) | null>(null)
+	const [transectActive, setTransectActive] = useState(false)
+	const [transectGeometry, setTransectGeometry] = useState<any>(null)
+	const [transectHoverCoord, setTransectHoverCoord] = useState<{ lon: number; lat: number } | null>(null)
+	const [requestExpandTransectId, setRequestExpandTransectId] = useState<string | null>(null)
+
+	// Annotations
+	const [annotations, setAnnotations] = useState<MapAnnotation[]>(() => loadAnnotations())
+	const [transects, setTransects] = useState<MapTransect[]>(() => loadTransects())
+	const [drawPurpose, setDrawPurpose] = useState<"roi" | "annotation" | "transect">("roi")
+
+	// On mount, sync annotations from the durable host backup (recovers after localStorage eviction).
+	// Only applied when localStorage appears empty to avoid overwriting live edits.
+	useEffect(() => {
+		if (loadAnnotations().length > 0) {
+			return // localStorage has data; host sync not needed
+		}
+		void loadAnnotationsFromHost().then((result) => {
+			if (result && result.annotations.length > 0) {
+				setAnnotations(result.annotations)
+				saveAnnotations(result.annotations)
+			}
+		})
+	}, [])
+
+	// Swipe Tool
+	const [swipeMode, _setSwipeMode] = useState(false)
+	const [swipeX, setSwipeX] = useState<number>(0.5)
+	const [swipeLayerLeft, setSwipeLayerLeft] = useState<string | null>(null)
+	const [swipeLayerRight, setSwipeLayerRight] = useState<string | null>(null)
+
+	// Smart swipe toggle: auto-assign first two visible raster/data layers when enabling
+	const setSwipeMode = useCallback(
+		(on: boolean) => {
+			_setSwipeMode(on)
+			if (on) {
+				const visibleData = layers.filter((l) => visibleLayerIds.has(l.id))
+				if (!swipeLayerLeft && visibleData.length > 0) {
+					setSwipeLayerLeft(visibleData[0]?.id ?? null)
+				}
+				if (!swipeLayerRight && visibleData.length > 1) {
+					setSwipeLayerRight(visibleData[1]?.id ?? null)
+				} else if (!swipeLayerRight && visibleData.length === 1) {
+					setSwipeLayerRight(null) // single layer — compare against basemap
+				}
+			} else {
+				// Reset
+				setSwipeLayerLeft(null)
+				setSwipeLayerRight(null)
+				setSwipeX(0.5)
+			}
+		},
+		[layers, visibleLayerIds, swipeLayerLeft, swipeLayerRight],
+	)
+
+	// Arrow-key nudge for swipe divider (5% per press)
+	useEffect(() => {
+		if (!swipeMode) return
+		const onKey = (e: KeyboardEvent) => {
+			if (e.key === "ArrowLeft") {
+				e.preventDefault()
+				setSwipeX((x) => Math.max(0.05, x - 0.05))
+			} else if (e.key === "ArrowRight") {
+				e.preventDefault()
+				setSwipeX((x) => Math.min(0.95, x + 0.05))
+			}
+		}
+		window.addEventListener("keydown", onKey)
+		return () => window.removeEventListener("keydown", onKey)
+	}, [swipeMode])
 
 	useEscToClosePanels({
 		measureMode,
@@ -666,6 +779,123 @@ export const MapView: React.FC<MapViewProps> = ({ mapStyle = "dark" }) => {
 	const [agentStarting, setAgentStarting] = useState(false)
 	const [agentStatus, setAgentStatus] = useState<string | null>(null)
 	const [inspectRasterReading, setInspectRasterReading] = useState<CursorRasterReading | null>(null)
+	const [contextMenu, setContextMenu] = useState<{
+		x: number
+		y: number
+		lon: number
+		lat: number
+		features: ClickedFeature[]
+	} | null>(null)
+
+	// Stable ref for values needed in native event handlers (avoids stale closures)
+	const nativeHandlersRef = useRef({
+		measureMode: null as MeasureMode,
+		drawMode: null as VectorDrawMode,
+		viewState: null as MapViewState | null,
+		sortedLayers: [] as typeof sortedLayers,
+		visibleLayerIds: new Set<string>(),
+		annotations: [] as MapAnnotation[],
+	})
+
+	// Timestamp of last context-menu open — used to guard against the click event
+	// (from mouseup) immediately closing a menu that contextmenu (from mousedown) just opened.
+	const contextMenuOpenTimeRef = useRef<number>(0)
+
+	/** Shared logic: compute menu position + features and open the context menu */
+	const openContextMenuAt = (e: MouseEvent, container: HTMLElement) => {
+		e.preventDefault()
+		const { measureMode, drawMode, viewState, sortedLayers, visibleLayerIds } = nativeHandlersRef.current
+		if (measureMode || drawMode) return
+		if (!viewState) return
+		const rect = container.getBoundingClientRect()
+		const rawX = e.clientX - rect.left
+		const rawY = e.clientY - rect.top
+		try {
+			const vp = new WebMercatorViewport({
+				width: rect.width,
+				height: rect.height,
+				longitude: viewState.longitude,
+				latitude: viewState.latitude,
+				zoom: viewState.zoom,
+				bearing: viewState.bearing ?? 0,
+				pitch: viewState.pitch ?? 0,
+			})
+			const [lon, lat] = vp.unproject([rawX, rawY])
+			const menuW = 220
+			const menuH = 380
+			const x = Math.max(4, Math.min(rawX, rect.width - menuW - 4))
+			const y = Math.max(4, Math.min(rawY, rect.height - menuH - 4))
+			const features = collectFeaturesAtPoint(sortedLayers, visibleLayerIds, isGeoJsonLayer, lon, lat)
+			contextMenuOpenTimeRef.current = Date.now()
+			setContextMenu({ x, y, lon, lat, features })
+		} catch {
+			// viewport unproject failed (e.g. extreme pitch), skip
+		}
+	}
+
+	// Capture-phase contextmenu — fires before deck.gl can swallow it
+	useEffect(() => {
+		const container = containerRef.current
+		if (!container) return
+		const handler = (e: MouseEvent) => openContextMenuAt(e, container)
+		container.addEventListener("contextmenu", handler, true)
+		return () => container.removeEventListener("contextmenu", handler, true)
+	}, []) // register once; reads latest values via ref
+
+	// Backup: pointerdown with button=2 (right-button) for macOS touchpad two-finger
+	// tap inside Electron webviews where the contextmenu event can be swallowed.
+	// Guard: skip if contextmenu already opened the menu within the last 100 ms.
+	useEffect(() => {
+		const container = containerRef.current
+		if (!container) return
+		const handler = (e: PointerEvent) => {
+			if (e.button !== 2) return
+			if (Date.now() - contextMenuOpenTimeRef.current < 100) return // contextmenu already handled it
+			openContextMenuAt(e as unknown as MouseEvent, container)
+		}
+		container.addEventListener("pointerdown", handler, true)
+		return () => container.removeEventListener("pointerdown", handler, true)
+	}, []) // register once; reads latest values via ref
+
+	// Double-click anywhere on the map drops a location pin
+	useEffect(() => {
+		const container = containerRef.current
+		if (!container) return
+		const handler = (e: MouseEvent) => {
+			const { measureMode, drawMode, viewState, annotations } = nativeHandlersRef.current
+			if (measureMode || drawMode) return
+			if (!viewState) return
+			const rect = container.getBoundingClientRect()
+			const rawX = e.clientX - rect.left
+			const rawY = e.clientY - rect.top
+			try {
+				const vp = new WebMercatorViewport({
+					width: rect.width,
+					height: rect.height,
+					longitude: viewState.longitude,
+					latitude: viewState.latitude,
+					zoom: viewState.zoom,
+					bearing: viewState.bearing ?? 0,
+					pitch: viewState.pitch ?? 0,
+				})
+				const [lon, lat] = vp.unproject([rawX, rawY])
+				const ann = newAnnotation("point", { type: "Point", coordinates: [lon, lat] }, annotations.length)
+				const next = [...annotations, ann]
+				setAnnotations(next)
+				saveAnnotations(next)
+				setClickedFeatures([])
+				setInspectPoint(null)
+				setContextMenu(null)
+				const latStr = `${Math.abs(lat).toFixed(5)}°${lat >= 0 ? "N" : "S"}`
+				const lonStr = `${Math.abs(lon).toFixed(5)}°${lon >= 0 ? "E" : "W"}`
+				setAgentStatus(`Pin dropped at ${latStr}, ${lonStr}`)
+			} catch {
+				// ignore
+			}
+		}
+		container.addEventListener("dblclick", handler, true)
+		return () => container.removeEventListener("dblclick", handler, true)
+	}, []) // register once; reads latest values via ref
 
 	useEffect(() => {
 		reportMapEvent("selection.changed", selectedFeaturesPayload(selectedFeatures))
@@ -866,11 +1096,21 @@ export const MapView: React.FC<MapViewProps> = ({ mapStyle = "dark" }) => {
 			} else if (msg?.type === "aihydro-open-map-scene" && typeof msg.scene === "string") {
 				try {
 					const scene = JSON.parse(msg.scene)
-					if (scene?.viewState) setViewState(scene.viewState)
-					if (typeof scene?.basemap === "string") setSelectedBaseMap(scene.basemap)
-					if (Array.isArray(scene?.visibleLayerIds)) setVisibleLayerIds(new Set(scene.visibleLayerIds))
-					if (Array.isArray(scene?.layerOrder)) setLayerOrder(scene.layerOrder)
-					if (scene?.layerOpacities && typeof scene.layerOpacities === "object") setLayerOpacities(scene.layerOpacities)
+					if (scene?.viewState) {
+						setViewState(scene.viewState)
+					}
+					if (typeof scene?.basemap === "string") {
+						setSelectedBaseMap(scene.basemap)
+					}
+					if (Array.isArray(scene?.visibleLayerIds)) {
+						setVisibleLayerIds(new Set(scene.visibleLayerIds))
+					}
+					if (Array.isArray(scene?.layerOrder)) {
+						setLayerOrder(scene.layerOrder)
+					}
+					if (scene?.layerOpacities && typeof scene.layerOpacities === "object") {
+						setLayerOpacities(scene.layerOpacities)
+					}
 					if (Array.isArray(scene?.layers)) {
 						for (const layer of scene.layers as MapLayer[]) {
 							await MapServiceClient.addMapLayer(AddMapLayerRequest.create({ layer, replaceExisting: true }))
@@ -969,6 +1209,13 @@ export const MapView: React.FC<MapViewProps> = ({ mapStyle = "dark" }) => {
 			return nextVisibleLayers
 		})
 		knownLayerIdsRef.current = new Set(layers.map((layer) => layer.id))
+		// Evict parsed-GeoJSON cache entries for layers that no longer exist.
+		const liveIds = new Set(layers.map((layer) => layer.id))
+		for (const id of parsedGeojsonCacheRef.current.keys()) {
+			if (!liveIds.has(id)) {
+				parsedGeojsonCacheRef.current.delete(id)
+			}
+		}
 	}, [layers])
 
 	// Preload raster images that arrived via gRPC (Python-pushed via
@@ -1218,6 +1465,12 @@ export const MapView: React.FC<MapViewProps> = ({ mapStyle = "dark" }) => {
 
 	const handleMapClick = useCallback(
 		(info: any) => {
+			// Only dismiss the context menu on a genuine left-click, and only if the menu
+			// wasn't opened within the last 400 ms (macOS fires contextmenu on mousedown
+			// and click on mouseup — without this guard the menu flickers closed instantly).
+			if (Date.now() - contextMenuOpenTimeRef.current > 400) {
+				setContextMenu(null)
+			}
 			// If measure mode is active, feed the coordinate to the measure tool
 			// and skip feature identification entirely.
 			if ((measureMode || drawMode) && info.coordinate) {
@@ -1226,6 +1479,14 @@ export const MapView: React.FC<MapViewProps> = ({ mapStyle = "dark" }) => {
 				} else if (measureMode) {
 					measureClickRef.current?.(info.coordinate)
 				}
+				return
+			}
+
+			// Clicking a saved transect line — expand that card and open the panel.
+			// info.object is now a MapTransect directly (PathLayer, not GeoJsonLayer).
+			if (info.layer?.id === "__saved-transects" && (info.object as any)?.id) {
+				setRequestExpandTransectId((info.object as any).id as string)
+				setTransectActive(true)
 				return
 			}
 
@@ -1294,6 +1555,29 @@ export const MapView: React.FC<MapViewProps> = ({ mapStyle = "dark" }) => {
 	// only re-cluster when crossing an integer zoom level, not on every frame.
 	const clusterCacheRef = useRef<Map<string, any>>(new Map())
 
+	// Per-layer parsed GeoJSON cache — keyed by layer id, invalidated when the raw
+	// geojson string changes. JSON.parse over a multi-MB string is the dominant cost
+	// in dataLayers; caching it keeps the parsed object reference stable across
+	// recomputes so deck.gl skips re-tessellating geometry on opacity/zoom changes.
+	const parsedGeojsonCacheRef = useRef<Map<string, { raw: string; parsed: any }>>(new Map())
+	const getParsedGeojson = useCallback((id: string, raw: string): any => {
+		const cached = parsedGeojsonCacheRef.current.get(id)
+		if (cached && cached.raw === raw) {
+			return cached.parsed
+		}
+		const parsed = JSON.parse(raw)
+		parsedGeojsonCacheRef.current.set(id, { raw, parsed })
+		return parsed
+	}, [])
+
+	// Integer zoom bucket — only varies when clustered layers exist (clustering is
+	// the only zoom-dependent path). When nothing clusters, this stays constant so
+	// pan/zoom frames don't rebuild every layer.
+	const zoomBucket = useMemo(
+		() => (clusterLayerIds.size > 0 ? Math.floor(viewState.zoom) : 0),
+		[clusterLayerIds, viewState.zoom],
+	)
+
 	const dataLayers = useMemo(
 		() =>
 			sortedLayers
@@ -1325,10 +1609,14 @@ export const MapView: React.FC<MapViewProps> = ({ mapStyle = "dark" }) => {
 								maxZoom: 18,
 								tileSize: 256,
 								getTileData: async (tile: any) => {
-									if (!tile.url) return null
+									if (!tile.url) {
+										return null
+									}
 									try {
 										const resp = await fetch(tile.url)
-										if (!resp.ok) return null
+										if (!resp.ok) {
+											return null
+										}
 										const blob = await resp.blob()
 										return createImageBitmap(blob)
 									} catch {
@@ -1339,9 +1627,12 @@ export const MapView: React.FC<MapViewProps> = ({ mapStyle = "dark" }) => {
 									const {
 										bbox: { west, south, east, north },
 									} = props.tile
-									if (!props.data) return null
-									if (east < bounds[0] || west > bounds[2] || north < bounds[1] || south > bounds[3])
+									if (!props.data) {
 										return null
+									}
+									if (east < bounds[0] || west > bounds[2] || north < bounds[1] || south > bounds[3]) {
+										return null
+									}
 									return new BitmapLayer(props, {
 										data: undefined,
 										image: props.data,
@@ -1365,14 +1656,32 @@ export const MapView: React.FC<MapViewProps> = ({ mapStyle = "dark" }) => {
 								return null
 							}
 
-							// Detect colormap change and trigger async re-render.
+							// Detect colormap or stretch change and trigger async re-render.
 							// rawPixels is only available for user-loaded GeoTIFFs.
 							const targetColormap = layer.metadata?.raster_colormap ?? "viridis"
-							if (cached.colormap !== targetColormap && cached.rawPixels && !rasterRecolorInFlight.has(layer.id)) {
+							const stretchMin = layer.metadata?.raster_stretch_min
+								? parseFloat(layer.metadata.raster_stretch_min)
+								: undefined
+							const stretchMax = layer.metadata?.raster_stretch_max
+								? parseFloat(layer.metadata.raster_stretch_max)
+								: undefined
+							const stretchKey = `${stretchMin ?? ""}:${stretchMax ?? ""}`
+							const cachedStretchKey = `${cached.stretchMin ?? ""}:${cached.stretchMax ?? ""}`
+							if (
+								(cached.colormap !== targetColormap || stretchKey !== cachedStretchKey) &&
+								cached.rawPixels &&
+								!rasterRecolorInFlight.has(layer.id)
+							) {
 								rasterRecolorInFlight.add(layer.id)
-								applyColormap(cached.rawPixels, targetColormap)
+								applyColormap(cached.rawPixels, targetColormap, stretchMin, stretchMax)
 									.then((image) => {
-										rasterCache.set(layer.id, { ...cached, image, colormap: targetColormap })
+										rasterCache.set(layer.id, {
+											...cached,
+											image,
+											colormap: targetColormap,
+											stretchMin,
+											stretchMax,
+										})
 										rasterRecolorInFlight.delete(layer.id)
 										setRasterReadyTick((t) => t + 1)
 									})
@@ -1391,17 +1700,17 @@ export const MapView: React.FC<MapViewProps> = ({ mapStyle = "dark" }) => {
 								pickable: false,
 							})
 						}
-						let geojson = JSON.parse(layer.geojson)
+						let geojson = getParsedGeojson(layer.id, layer.geojson)
 						const style = layer.style
 						// Apply point clustering for dense networks at low zoom
-						if (clusterLayerIds.has(layer.id) && viewState.zoom < 8) {
+						if (clusterLayerIds.has(layer.id) && zoomBucket < 8) {
 							const featureCount = geojson?.features?.length ?? geojson?.coordinates?.length ?? 0
-							const cacheKey = `${layer.id}|${Math.floor(viewState.zoom)}|${featureCount}`
+							const cacheKey = `${layer.id}|${zoomBucket}|${featureCount}`
 							const cachedCluster = clusterCacheRef.current.get(cacheKey)
 							if (cachedCluster) {
 								geojson = cachedCluster
 							} else {
-								geojson = clusterGeoJSON(geojson, viewState.zoom)
+								geojson = clusterGeoJSON(geojson, zoomBucket)
 								clusterCacheRef.current.set(cacheKey, geojson)
 							}
 						}
@@ -1461,6 +1770,28 @@ export const MapView: React.FC<MapViewProps> = ({ mapStyle = "dark" }) => {
 							lineWidthMaxPixels: 20,
 							autoHighlight: true,
 							highlightColor: [255, 213, 79, Math.round(190 * layerOpacity)],
+							// data reference is stable across recomputes (parsed cache), so
+							// deck.gl won't re-evaluate accessors unless these triggers change.
+							updateTriggers: {
+								getFillColor: [
+									layerOpacity,
+									graduatedAttr,
+									graduatedBreaks,
+									graduatedColors,
+									useMeritDefaultSymbology,
+									meritKind,
+								],
+								getLineColor: [
+									layerOpacity,
+									graduatedAttr,
+									graduatedBreaks,
+									graduatedColors,
+									useMeritDefaultSymbology,
+									meritKind,
+									layer.layerType,
+								],
+								getLineWidth: [strokeWidth, useMeritDefaultSymbology, meritKind, layerOpacity],
+							},
 							getLineWidth: (feature: any) => {
 								if (useMeritDefaultSymbology && meritKind === "rivers") {
 									return meritRiverVisual(feature, layerOpacity).width
@@ -1521,8 +1852,9 @@ export const MapView: React.FC<MapViewProps> = ({ mapStyle = "dark" }) => {
 				.filter(Boolean) as any[],
 		// sortedLayers already depends on layers+layerOrder; rasterReadyTick bumps
 		// when async raster preloads finish so the BitmapLayer instantiates after
-		// the image is ready. viewState.zoom and clusterLayerIds drive clustering.
-		[sortedLayers, visibleLayerIds, rasterReadyTick, layerOpacities, viewState.zoom, clusterLayerIds],
+		// the image is ready. zoomBucket (integer, only varies when clustering is on)
+		// and clusterLayerIds drive clustering without rebuilding on every zoom frame.
+		[sortedLayers, visibleLayerIds, rasterReadyTick, layerOpacities, zoomBucket, clusterLayerIds, getParsedGeojson],
 	)
 
 	// Measure overlay layer — renders live measurement geometry on the map
@@ -1747,15 +2079,174 @@ export const MapView: React.FC<MapViewProps> = ({ mapStyle = "dark" }) => {
 		})
 	}, [clickedFeatures, selectedFeatures])
 
+	// Transect line overlay — orange dashed polyline while drawing / after finish
+	const transectLayer = useMemo(() => {
+		if (!transectGeometry) {
+			return null
+		}
+		return new GeoJsonLayer({
+			id: "__transect-overlay",
+			data: transectGeometry,
+			getLineColor: (f: any) => (f.properties?._transectVertex ? [255, 255, 255, 200] : [255, 140, 0, 220]),
+			getPointRadius: 5,
+			getLineWidth: (f: any) => (f.properties?._transectVertex ? 0 : 2),
+			lineWidthUnits: "pixels",
+			pointRadiusUnits: "pixels",
+			getFillColor: [255, 140, 0, 200],
+			stroked: false,
+			dashArray: [6, 4],
+			dashJustified: true,
+			extensions: [],
+		})
+	}, [transectGeometry])
+
+	// Smart Annotations overlay — updateTriggers force function-accessor re-evaluation
+	// on webview reload (prevents colors from being cached stale after refresh).
+	const annotationsLayer = useMemo(() => {
+		if (annotations.length === 0) {
+			return null
+		}
+		const colorTrigger = annotations.map((a) => a.color).join(",")
+		return new GeoJsonLayer({
+			id: "__annotations-overlay",
+			data: {
+				type: "FeatureCollection" as const,
+				features: annotations.map((a) => ({
+					type: "Feature" as const,
+					geometry: a.geometry,
+					properties: { color: a.color, name: a.name },
+				})),
+			},
+			stroked: true,
+			filled: true,
+			getFillColor: (f: any) => {
+				const hex = (f.properties.color || "#ffffff").replace("#", "")
+				return [parseInt(hex.slice(0, 2), 16), parseInt(hex.slice(2, 4), 16), parseInt(hex.slice(4, 6), 16), 160] as [
+					number,
+					number,
+					number,
+					number,
+				]
+			},
+			getLineColor: (f: any) => {
+				const hex = (f.properties.color || "#ffffff").replace("#", "")
+				return [parseInt(hex.slice(0, 2), 16), parseInt(hex.slice(2, 4), 16), parseInt(hex.slice(4, 6), 16), 255] as [
+					number,
+					number,
+					number,
+					number,
+				]
+			},
+			getPointRadius: 7,
+			getLineWidth: 2,
+			lineWidthUnits: "pixels" as const,
+			pointRadiusUnits: "pixels" as const,
+			pickable: true,
+			updateTriggers: {
+				getFillColor: colorTrigger,
+				getLineColor: colorTrigger,
+			},
+		})
+	}, [annotations])
+
+	// Saved transect lines — PathLayer with static colors avoids function-accessor
+	// caching issues that caused lines to disappear after a webview refresh.
+	const savedTransectsLayer = useMemo(() => {
+		if (transects.length === 0) return null
+		return new PathLayer<(typeof transects)[0]>({
+			id: "__saved-transects",
+			data: transects,
+			getPath: (t) => t.geometry.coordinates as [number, number][],
+			getColor: (t) => {
+				const hex = (t.color || "#f97316").replace("#", "")
+				const r = parseInt(hex.slice(0, 2), 16) || 249
+				const g = parseInt(hex.slice(2, 4), 16) || 115
+				const b = parseInt(hex.slice(4, 6), 16) || 22
+				return [r, g, b, 230] as [number, number, number, number]
+			},
+			getWidth: 3,
+			widthUnits: "pixels" as const,
+			pickable: true,
+			updateTriggers: {
+				getColor: transects.map((t) => t.color),
+			},
+		})
+	}, [transects])
+
+	// Chart-hover marker: a crosshair on the map at the hovered profile point
+	const transectHoverLayer = useMemo(() => {
+		if (!transectHoverCoord) return null
+		return new GeoJsonLayer({
+			id: "__transect-hover-marker",
+			data: {
+				type: "FeatureCollection" as const,
+				features: [
+					{
+						type: "Feature" as const,
+						geometry: { type: "Point" as const, coordinates: [transectHoverCoord.lon, transectHoverCoord.lat] },
+						properties: {},
+					},
+				],
+			},
+			pickable: false,
+			stroked: true,
+			filled: true,
+			pointRadiusUnits: "pixels" as const,
+			getPointRadius: 6,
+			getFillColor: [250, 250, 250, 220] as [number, number, number, number],
+			getLineColor: [30, 30, 30, 255] as [number, number, number, number],
+			getLineWidth: 2,
+			lineWidthUnits: "pixels" as const,
+		})
+	}, [transectHoverCoord])
+
 	const allLayers = [
 		basemapLayer,
 		...dataLayers,
 		inspectHighlightLayer,
 		measureLayer,
 		drawLayer,
+		savedTransectsLayer,
+		transectLayer,
+		annotationsLayer,
+		transectHoverLayer,
 		...measureLabels,
 		...searchPinLayers,
 	].filter(Boolean) as any[]
+
+	// Swipe: separate data layers from shared overlay layers
+	// Data layers go only to the side that selects them;
+	// basemap, annotations, measure, draw, pins etc appear on BOTH sides.
+	const sharedLayers = [
+		basemapLayer,
+		inspectHighlightLayer,
+		measureLayer,
+		drawLayer,
+		savedTransectsLayer,
+		transectLayer,
+		annotationsLayer,
+		transectHoverLayer,
+		...measureLabels,
+		...searchPinLayers,
+	].filter(Boolean) as any[]
+
+	const rightLayers = useMemo(() => {
+		if (!swipeMode) {
+			return allLayers
+		}
+		// Right side: show the right-selected data layer + shared overlays
+		const rightData = swipeLayerRight ? dataLayers.filter((l) => l?.id === swipeLayerRight) : [] // no selection = basemap only
+		return [...sharedLayers, ...rightData].filter(Boolean)
+	}, [swipeMode, allLayers, sharedLayers, dataLayers, swipeLayerRight])
+
+	const leftLayers = useMemo(() => {
+		if (!swipeMode) {
+			return []
+		}
+		// Left side: show the left-selected data layer + shared overlays
+		const leftData = swipeLayerLeft ? dataLayers.filter((l) => l?.id === swipeLayerLeft) : [] // no selection = basemap only
+		return [...sharedLayers, ...leftData].filter(Boolean)
+	}, [swipeMode, allLayers, sharedLayers, dataLayers, swipeLayerLeft])
 
 	const saveFeaturesToWorkspace = useCallback(async (features: ClickedFeature[], format: "geojson" | "shapefile") => {
 		const exportable = features.filter((feature) => feature.geometry)
@@ -1792,6 +2283,106 @@ export const MapView: React.FC<MapViewProps> = ({ mapStyle = "dark" }) => {
 		}
 	}, [])
 
+	const handleAgentAsk = useCallback(
+		async (pt: MapInspectPoint, features: ClickedFeature[], userQuestion?: string) => {
+			setAgentStarting(true)
+			setAgentStatus(null)
+			setDelineateStatus(null)
+			const ctx = buildMapAgentContext(pt, features, sortedLayers, visibleLayerIds, selectedFeatures)
+			try {
+				const result = await askAgentAboutMap(ctx, userQuestion)
+				setAgentStatus(
+					result.ok
+						? "Chat opened — edit the prompt and send when ready."
+						: result.error || "Could not start agent task",
+				)
+			} catch (e) {
+				setAgentStatus(e instanceof Error ? e.message : String(e))
+			} finally {
+				setAgentStarting(false)
+			}
+		},
+		[sortedLayers, visibleLayerIds, selectedFeatures],
+	)
+
+	const handleAgentDelineate = useCallback(
+		async (pt: MapInspectPoint, features: ClickedFeature[]) => {
+			setAgentStarting(true)
+			setAgentStatus(null)
+			setDelineateStatus(null)
+			const ctx = buildMapAgentContext(pt, features, sortedLayers, visibleLayerIds, selectedFeatures)
+			try {
+				const result = await askAgentToDelineate(ctx)
+				setAgentStatus(
+					result.ok
+						? "Chat opened — agent will delineate and push to map."
+						: result.error || "Could not start agent task",
+				)
+			} catch (e) {
+				setAgentStatus(e instanceof Error ? e.message : String(e))
+			} finally {
+				setAgentStarting(false)
+			}
+		},
+		[sortedLayers, visibleLayerIds, selectedFeatures],
+	)
+
+	const handleQuickDelineate = useCallback(
+		async (pt: MapInspectPoint, features: ClickedFeature[]) => {
+			if (!isConus(pt.lat, pt.lon) && !hasMeritRiversOnMap(sortedLayers, visibleLayerIds)) {
+				setDelineateStatus(meritRiversRequiredMessage())
+				return
+			}
+			const expectedAreaKm2 = selectedMeritUpareaKm2(features)
+			if (expectedAreaKm2 && expectedAreaKm2 > QUICK_DELINEATE_MAX_MERIT_UPAREA_KM2) {
+				setDelineateStatus(
+					`Large basin (~${Math.round(expectedAreaKm2).toLocaleString()} km²). Quick raster delineation exceeds the interactive envelope; use Delineate with agent so the hybrid workflow can stage MERIT-Basins assets.`,
+				)
+				return
+			}
+			reportMapEvent("delineation.requested", { lat: pt.lat, lon: pt.lon })
+			setDelineating(true)
+			setDelineateStatus(null)
+			setAgentStatus(null)
+			try {
+				const result = await sendHydroMapCommand("delineatePoint", {
+					lat: pt.lat,
+					lon: pt.lon,
+					method: "auto",
+					expectedAreaKm2,
+				})
+				if (result.ok) {
+					const area = (result.result?.data as { area_km2?: number })?.area_km2
+					const method = (result.result?.data as { method_used?: string })?.method_used
+					setDelineateStatus(
+						area != null
+							? `Done: ${Number(area).toFixed(1)} km² (${method || "auto"})`
+							: result.message || "Watershed added to map",
+					)
+					reportMapEvent("delineation.completed", { lat: pt.lat, lon: pt.lon, area_km2: area, method_used: method })
+					handleFitExtent()
+				} else {
+					setDelineateStatus(result.error || result.message || "Delineation failed")
+				}
+			} catch (e) {
+				setDelineateStatus(e instanceof Error ? e.message : String(e))
+			} finally {
+				setDelineating(false)
+			}
+		},
+		[sortedLayers, visibleLayerIds],
+	)
+
+	// Keep native handler ref up-to-date every render
+	nativeHandlersRef.current = {
+		measureMode,
+		drawMode,
+		viewState,
+		sortedLayers,
+		visibleLayerIds,
+		annotations,
+	}
+
 	const bgColor = mapStyle === "dark" ? "#1a1a2e" : "#f0f0f0"
 
 	return (
@@ -1809,8 +2400,9 @@ export const MapView: React.FC<MapViewProps> = ({ mapStyle = "dark" }) => {
 				background: bgColor,
 				overflow: "hidden",
 			}}>
+			{/* RIGHT MAP (or single map when not swiping) */}
 			<DeckGL
-				controller={true}
+				controller={{ doubleClickZoom: false }}
 				getCursor={({ isDragging }: { isDragging: boolean }) => {
 					if (isDragging) {
 						return "grabbing"
@@ -1824,7 +2416,7 @@ export const MapView: React.FC<MapViewProps> = ({ mapStyle = "dark" }) => {
 					return "grab"
 				}}
 				getTooltip={layers.length > 0 && clickedFeatures.length === 0 ? getTooltip : undefined}
-				layers={allLayers}
+				layers={rightLayers}
 				onClick={handleMapClick}
 				onHover={({ coordinate }: any) => {
 					if (coordinate && Array.isArray(coordinate) && coordinate.length >= 2) {
@@ -1841,11 +2433,143 @@ export const MapView: React.FC<MapViewProps> = ({ mapStyle = "dark" }) => {
 						setToolHoverCoord(null)
 					}
 				}}
-				onViewStateChange={({ viewState: nextViewState }) => setViewState(nextViewState as MapViewState)}
+				onViewStateChange={({ viewState }: any) => {
+					setViewState(viewState)
+					setContextMenu(null)
+				}}
 				pickingRadius={8}
 				style={{ position: "absolute", inset: "0" }}
 				viewState={viewState}
 			/>
+
+			{/* LEFT MAP (clipped) */}
+			{swipeMode && (
+				<div
+					style={{
+						position: "absolute",
+						inset: 0,
+						clipPath: `inset(0 ${100 - swipeX * 100}% 0 0)`,
+						pointerEvents: "none",
+					}}>
+					<DeckGL
+						controller={false}
+						layers={leftLayers}
+						style={{ position: "absolute", inset: "0" }}
+						viewState={viewState}
+					/>
+				</div>
+			)}
+
+			{/* Swipe Slider overlay */}
+			{swipeMode &&
+				(() => {
+					const leftName = swipeLayerLeft
+						? (layers.find((l) => l.id === swipeLayerLeft)?.name ?? "Left Layer")
+						: "Basemap"
+					const rightName = swipeLayerRight
+						? (layers.find((l) => l.id === swipeLayerRight)?.name ?? "Right Layer")
+						: "Basemap"
+					const labelStyle: React.CSSProperties = {
+						background: "rgba(0,0,0,0.68)",
+						color: "#fff",
+						fontSize: 10,
+						padding: "3px 9px",
+						borderRadius: 12,
+						fontWeight: 600,
+						backdropFilter: "blur(4px)",
+						whiteSpace: "nowrap",
+						maxWidth: 160,
+						overflow: "hidden",
+						textOverflow: "ellipsis",
+					}
+					return (
+						<>
+							{/* Left label — floats to the left of the divider, bottom-anchored */}
+							<div
+								style={{
+									position: "absolute",
+									bottom: 38,
+									left: `calc(${swipeX * 100}% - 10px)`,
+									transform: "translateX(-100%)",
+									zIndex: 101,
+									pointerEvents: "none",
+								}}>
+								<div style={labelStyle}>◀ {leftName}</div>
+							</div>
+
+							{/* Right label — floats to the right of the divider, bottom-anchored */}
+							<div
+								style={{
+									position: "absolute",
+									bottom: 38,
+									left: `calc(${swipeX * 100}% + 10px)`,
+									zIndex: 101,
+									pointerEvents: "none",
+								}}>
+								<div style={labelStyle}>{rightName} ▶</div>
+							</div>
+
+							{/* Drag handle */}
+							<div
+								onDoubleClick={() => setSwipeX(0.5)}
+								onPointerDown={(e) => {
+									const el = e.currentTarget
+									el.setPointerCapture(e.pointerId)
+									const onMove = (me: PointerEvent) => {
+										const rect = containerRef.current?.getBoundingClientRect()
+										if (rect) {
+											let nx = (me.clientX - rect.left) / rect.width
+											nx = Math.max(0.05, Math.min(0.95, nx))
+											setSwipeX(nx)
+										}
+									}
+									const onUp = (ue: PointerEvent) => {
+										el.releasePointerCapture(ue.pointerId)
+										el.removeEventListener("pointermove", onMove)
+										el.removeEventListener("pointerup", onUp)
+									}
+									el.addEventListener("pointermove", onMove)
+									el.addEventListener("pointerup", onUp)
+								}}
+								style={{
+									position: "absolute",
+									top: 0,
+									bottom: 0,
+									left: `${swipeX * 100}%`,
+									width: 4,
+									marginLeft: -2,
+									background: "rgba(255,255,255,0.9)",
+									cursor: "ew-resize",
+									zIndex: 100,
+									boxShadow: "0 0 8px rgba(0,0,0,0.6)",
+								}}>
+								{/* Centre circle handle */}
+								<div
+									style={{
+										position: "absolute",
+										top: "50%",
+										left: "50%",
+										transform: "translate(-50%, -50%)",
+										width: 32,
+										height: 32,
+										borderRadius: "50%",
+										background: "rgba(255,255,255,0.97)",
+										boxShadow: "0 2px 10px rgba(0,0,0,0.5)",
+										display: "flex",
+										alignItems: "center",
+										justifyContent: "center",
+										fontSize: 14,
+										color: "#333",
+										userSelect: "none",
+										flexDirection: "column",
+										gap: 0,
+									}}>
+									<span>⇔</span>
+								</div>
+							</div>
+						</>
+					)
+				})()}
 
 			{layers.length === 0 && <MapEmptyState mapStyle={mapStyle} />}
 
@@ -1887,10 +2611,58 @@ export const MapView: React.FC<MapViewProps> = ({ mapStyle = "dark" }) => {
 					setDrawMode(null)
 					setDrawGeometry(null)
 					setToolHoverCoord(null)
+					setDrawPurpose("roi")
 				}}
 				onComplete={(result) => {
 					setDrawMode(null)
 					setToolHoverCoord(null)
+					if (drawPurpose === "annotation") {
+						try {
+							const geojson = JSON.parse(result.geojson)
+							const feature = geojson.type === "FeatureCollection" ? geojson.features[0] : geojson
+							const newAnn = newAnnotation(result.mode, feature.geometry, annotations.length)
+							const next = [...annotations, newAnn]
+							setAnnotations(next)
+							saveAnnotations(next)
+						} catch {
+							/* ignore */
+						}
+						setDrawPurpose("roi")
+						return
+					}
+					if (drawPurpose === "transect") {
+						try {
+							const geojson = JSON.parse(result.geojson)
+							const feature = geojson.type === "FeatureCollection" ? geojson.features[0] : geojson
+							if (feature.geometry.type === "LineString") {
+								// Find the topmost visible raster layer to associate it with
+								let targetRasterId: string | undefined
+								const ordered = layerOrder
+									.map((id) => layers.find((l) => l.id === id))
+									.filter(Boolean) as MapLayer[]
+								for (let i = ordered.length - 1; i >= 0; i--) {
+									const layer = ordered[i]
+									if (
+										visibleLayerIds.has(layer.id) &&
+										(layer.layerType === "raster" || layer.layerType === "gee_tile")
+									) {
+										targetRasterId = layer.id
+										break
+									}
+								}
+
+								const newTrans = newTransect(feature.geometry, transects.length, targetRasterId)
+								const next = [...transects, newTrans]
+								setTransects(next)
+								saveTransects(next)
+							}
+						} catch {
+							/* ignore */
+						}
+						setDrawPurpose("roi")
+						setTransectActive(true) // Re-open transect panel if it was closed
+						return
+					}
 					setPendingDraw(result)
 					try {
 						setDrawGeometry(JSON.parse(result.geojson))
@@ -1949,11 +2721,143 @@ export const MapView: React.FC<MapViewProps> = ({ mapStyle = "dark" }) => {
 			)}
 
 			<MapToolRibbon
+				annotationsPanel={
+					<AnnotationsPanel
+						annotations={annotations}
+						mapStyle={mapStyle === "dark" ? "dark" : "light"}
+						onFlyTo={(lon, lat) => {
+							setViewState((prev) => ({ ...prev, longitude: lon, latitude: lat, zoom: Math.max(12, prev.zoom) }))
+						}}
+						onSaveToGallery={(item) => setMyGallery((prev) => [item, ...prev.filter((i) => i.id !== item.id)])}
+						onSeedFromLayer={() => {
+							const target = layers.find((l) => visibleLayerIds.has(l.id) && isGeoJsonLayer(l) && l.geojson?.trim())
+							if (!target?.geojson) {
+								return "No visible vector layer to seed from."
+							}
+							const { created, skipped } = seedAnnotationsFromGeoJson(target.geojson, annotations)
+							if (created.length > 0) {
+								setAnnotations((prev) => [...prev, ...created])
+							}
+							return `Seeded ${created.length} from "${target.name}"${skipped ? `, skipped ${skipped} existing` : ""}.`
+						}}
+						onStartDrawing={(type) => {
+							setDrawPurpose("annotation")
+							setDrawMode(type)
+						}}
+						setAnnotations={setAnnotations}
+						visibleLayerNames={Array.from(visibleLayerIds).map((id) => layers.find((l) => l.id === id)?.name || id)}
+					/>
+				}
 				clusterLayerIds={clusterLayerIds}
 				currentBasemap={selectedBaseMap}
 				drawMode={drawMode}
 				exportOpen={exportOpen}
 				galleryOpen={galleryOpen}
+				galleryPanel={(() => {
+					const galleryImportCallbacks: GalleryImportCallbacks = {
+						onImportScene: (item) => {
+							const p = item.payload as MapScenePayload
+							if (p.viewState) setViewState((v) => ({ ...v, ...p.viewState }))
+							if (p.basemap) setSelectedBaseMap(p.basemap)
+							if (Array.isArray(p.visibleLayerIds)) setVisibleLayerIds(new Set(p.visibleLayerIds))
+							if (p.layerOpacities) setLayerOpacities((prev) => ({ ...prev, ...p.layerOpacities }))
+							const nLayers = p.visibleLayerIds?.length ?? 0
+							const missingCount = (p.visibleLayerIds ?? []).filter((id) => !layers.some((l) => l.id === id)).length
+							let msg = `Restored "${item.title}" — ${nLayers} layer${nLayers !== 1 ? "s" : ""}`
+							if (missingCount > 0) msg += ` (${missingCount} not yet loaded — add them first)`
+							return msg
+						},
+						onImportTransects: (item) => {
+							const p = item.payload as { transects: MapTransect[]; collections: TransectCollection[] }
+							const incoming = Array.isArray(p.transects) ? p.transects : []
+							const existingIds = new Set(transects.map((t) => t.id))
+							const fresh = incoming.filter((t) => !existingIds.has(t.id))
+							const skipped = incoming.length - fresh.length
+							if (fresh.length > 0) {
+								const merged = [...transects, ...fresh]
+								setTransects(merged)
+								saveTransects(merged)
+							}
+							if (incoming.length === 0) return `"${item.title}" has no transects`
+							if (fresh.length === 0)
+								return `All ${incoming.length} transect${incoming.length !== 1 ? "s" : ""} from "${item.title}" already on map`
+							return `Added ${fresh.length} transect${fresh.length !== 1 ? "s" : ""}${skipped > 0 ? ` · ${skipped} already existed` : ""}`
+						},
+						onImportAnnotations: (item) => {
+							const p = item.payload as { annotations: MapAnnotation[]; collections: AnnotationCollection[] }
+							const incoming = Array.isArray(p.annotations) ? p.annotations : []
+							const existingIds = new Set(annotations.map((a) => a.id))
+							const fresh = incoming.filter((a) => !existingIds.has(a.id))
+							const skipped = incoming.length - fresh.length
+							if (fresh.length > 0) {
+								const merged = [...annotations, ...fresh]
+								setAnnotations(merged)
+								saveAnnotations(merged)
+							}
+							if (incoming.length === 0) return `"${item.title}" has no annotations`
+							if (fresh.length === 0)
+								return `All ${incoming.length} annotation${incoming.length !== 1 ? "s" : ""} from "${item.title}" already on map`
+							return `Added ${fresh.length} annotation${fresh.length !== 1 ? "s" : ""}${skipped > 0 ? ` · ${skipped} already existed` : ""}`
+						},
+					}
+					return (
+						<ResearchGalleryPanel
+							bookmarkedIds={bookmarkedIds}
+							importCallbacks={galleryImportCallbacks}
+							mapStyle={mapStyle === "dark" ? "dark" : "light"}
+							myItems={myGallery}
+							onDeleteMyItem={(id) => {
+								removeFromMyGallery(id)
+								setMyGallery((prev) => prev.filter((i) => i.id !== id))
+							}}
+							onOpenExport={() => setExportOpen(true)}
+							onSaveScene={(title, description, tags) => {
+								const payload: MapScenePayload = {
+									basemap: selectedBaseMap,
+									viewState: {
+										longitude: viewState.longitude,
+										latitude: viewState.latitude,
+										zoom: viewState.zoom,
+										bearing: (viewState as any).bearing ?? 0,
+										pitch: (viewState as any).pitch ?? 0,
+									},
+									visibleLayerIds: Array.from(visibleLayerIds),
+									layerOpacities,
+									layerDisplayNames: Object.fromEntries(
+										layers
+											.filter((l) => l.metadata?.display_name)
+											.map((l) => [l.id, l.metadata!.display_name!]),
+									),
+								}
+								const item = addToMyGallery({
+									type: "map_scene",
+									title,
+									description,
+									tags,
+									pinned: false,
+									payload,
+								})
+								setMyGallery((prev) => [item, ...prev.filter((i) => i.id !== item.id)])
+							}}
+							onToggleBookmark={(communityId) => {
+								const nowBookmarked = toggleBookmark(communityId)
+								setBookmarkedIds(
+									nowBookmarked
+										? [communityId, ...bookmarkedIds.filter((id) => id !== communityId)]
+										: bookmarkedIds.filter((id) => id !== communityId),
+								)
+							}}
+							onUpdateMyItem={(id, updates) => {
+								setMyGallery((prev) =>
+									prev.map((i) =>
+										i.id === id ? { ...i, ...updates, updatedAt: new Date().toISOString() } : i,
+									),
+								)
+								updateMyGalleryItem(id, updates)
+							}}
+						/>
+					)
+				})()}
 				layerCount={layers.length}
 				layerOpacities={layerOpacities}
 				layerOrder={layerOrder}
@@ -1979,11 +2883,13 @@ export const MapView: React.FC<MapViewProps> = ({ mapStyle = "dark" }) => {
 				onReorder={setLayerOrder}
 				onSearchToggle={() => setSearchOpen((v) => !v)}
 				onShowAllLayers={() => setVisibleLayerIds(new Set(layers.map((l) => l.id)))}
+				onTransectToggle={() => setTransectActive((v) => !v)}
 				onVisibilityChange={handleVisibilityChange}
 				onZoomToLayer={handleZoomToLayer}
 				searchOpen={searchOpen}
 				searchPanel={
 					<SearchBar
+						currentView={viewState}
 						embedded
 						onResultSelect={(result) => {
 							setViewState((prev) => ({
@@ -1995,6 +2901,42 @@ export const MapView: React.FC<MapViewProps> = ({ mapStyle = "dark" }) => {
 							setSearchPin({ lon: result.lon, lat: result.lat, label: result.label })
 						}}
 						viewBbox={mapViewBbox()}
+					/>
+				}
+				swipePanel={
+					<SwipePanel
+						layers={layers}
+						setSwipeLayerLeft={setSwipeLayerLeft}
+						setSwipeLayerRight={setSwipeLayerRight}
+						setSwipeMode={setSwipeMode}
+						setSwipeX={setSwipeX}
+						swipeLayerLeft={swipeLayerLeft}
+						swipeLayerRight={swipeLayerRight}
+						swipeMode={swipeMode}
+						swipeX={swipeX}
+						visibleLayerIds={visibleLayerIds}
+					/>
+				}
+				transectActive={transectActive}
+				transectsPanel={
+					<TransectsPanel
+						layerOrder={layerOrder}
+						layers={sortedLayers}
+						mapStyle={mapStyle === "dark" ? "dark" : "light"}
+						onFlyTo={(lon, lat) => {
+							setViewState((prev) => ({ ...prev, longitude: lon, latitude: lat, zoom: Math.max(12, prev.zoom) }))
+						}}
+						onProfileHover={(coord) => setTransectHoverCoord(coord)}
+						onSaveToGallery={(item) => setMyGallery((prev) => [item, ...prev.filter((i) => i.id !== item.id)])}
+						onStartDrawing={() => {
+							setDrawPurpose("transect")
+							setDrawMode("line")
+						}}
+						rasterReadyTick={rasterReadyTick}
+						requestExpandId={requestExpandTransectId}
+						setTransects={setTransects}
+						transects={transects}
+						visibleLayerIds={visibleLayerIds}
 					/>
 				}
 				viewState={viewState}
@@ -2027,42 +2969,8 @@ export const MapView: React.FC<MapViewProps> = ({ mapStyle = "dark" }) => {
 						return next
 					})
 				}}
-				onAgentAsk={async (pt) => {
-					setAgentStarting(true)
-					setAgentStatus(null)
-					setDelineateStatus(null)
-					const ctx = buildMapAgentContext(pt, clickedFeatures, sortedLayers, visibleLayerIds, selectedFeatures)
-					try {
-						const result = await askAgentAboutMap(ctx)
-						setAgentStatus(
-							result.ok
-								? "Chat opened — edit the prompt and send when ready."
-								: result.error || "Could not start agent task",
-						)
-					} catch (e) {
-						setAgentStatus(e instanceof Error ? e.message : String(e))
-					} finally {
-						setAgentStarting(false)
-					}
-				}}
-				onAgentDelineate={async (pt) => {
-					setAgentStarting(true)
-					setAgentStatus(null)
-					setDelineateStatus(null)
-					const ctx = buildMapAgentContext(pt, clickedFeatures, sortedLayers, visibleLayerIds, selectedFeatures)
-					try {
-						const result = await askAgentToDelineate(ctx)
-						setAgentStatus(
-							result.ok
-								? "Chat opened — agent will delineate and push to map."
-								: result.error || "Could not start agent task",
-						)
-					} catch (e) {
-						setAgentStatus(e instanceof Error ? e.message : String(e))
-					} finally {
-						setAgentStarting(false)
-					}
-				}}
+				onAgentAsk={(pt) => void handleAgentAsk(pt, clickedFeatures)}
+				onAgentDelineate={(pt) => void handleAgentDelineate(pt, clickedFeatures)}
 				onClearSelection={() => setSelectedFeatures([])}
 				onClose={() => {
 					setClickedFeatures([])
@@ -2071,57 +2979,76 @@ export const MapView: React.FC<MapViewProps> = ({ mapStyle = "dark" }) => {
 					setDelineateStatus(null)
 					setAgentStatus(null)
 				}}
-				onQuickDelineate={async (pt) => {
-					if (!isConus(pt.lat, pt.lon) && !hasMeritRiversOnMap(sortedLayers, visibleLayerIds)) {
-						setDelineateStatus(meritRiversRequiredMessage())
-						return
-					}
-					const expectedAreaKm2 = selectedMeritUpareaKm2(clickedFeatures)
-					if (expectedAreaKm2 && expectedAreaKm2 > QUICK_DELINEATE_MAX_MERIT_UPAREA_KM2) {
-						setDelineateStatus(
-							`Large basin (~${Math.round(expectedAreaKm2).toLocaleString()} km²). Quick raster delineation exceeds the interactive envelope; use Delineate with agent so the hybrid workflow can stage MERIT-Basins assets.`,
-						)
-						return
-					}
-					reportMapEvent("delineation.requested", { lat: pt.lat, lon: pt.lon })
-					setDelineating(true)
-					setDelineateStatus(null)
-					setAgentStatus(null)
-					try {
-						const result = await sendHydroMapCommand("delineatePoint", {
-							lat: pt.lat,
-							lon: pt.lon,
-							method: "auto",
-							expectedAreaKm2,
-						})
-						if (result.ok) {
-							const area = (result.result?.data as { area_km2?: number })?.area_km2
-							const method = (result.result?.data as { method_used?: string })?.method_used
-							setDelineateStatus(
-								area != null
-									? `Done: ${Number(area).toFixed(1)} km² (${method || "auto"})`
-									: result.message || "Watershed added to map",
-							)
-							reportMapEvent("delineation.completed", {
-								lat: pt.lat,
-								lon: pt.lon,
-								area_km2: area,
-								method_used: method,
-							})
-							handleFitExtent()
-						} else {
-							setDelineateStatus(result.error || result.message || "Delineation failed")
-						}
-					} catch (e) {
-						setDelineateStatus(e instanceof Error ? e.message : String(e))
-					} finally {
-						setDelineating(false)
-					}
-				}}
+				onQuickDelineate={(pt) => void handleQuickDelineate(pt, clickedFeatures)}
 				onSaveFeatures={saveFeaturesToWorkspace}
 				rasterReading={inspectRasterReading}
 				selectedFeatures={selectedFeatures}
 			/>
+
+			{contextMenu && (
+				<MapContextMenu
+					agentStarting={agentStarting}
+					delineating={delineating}
+					features={contextMenu.features}
+					lat={contextMenu.lat}
+					lon={contextMenu.lon}
+					mapStyle={mapStyle}
+					onAddAnnotation={() => {
+						const ann = newAnnotation(
+							"point",
+							{ type: "Point", coordinates: [contextMenu.lon, contextMenu.lat] },
+							annotations.length,
+						)
+						const next = [...annotations, ann]
+						setAnnotations(next)
+						saveAnnotations(next)
+					}}
+					onAgentDelineate={() =>
+						void handleAgentDelineate({ lon: contextMenu.lon, lat: contextMenu.lat }, contextMenu.features)
+					}
+					onAskAiHydro={(question) =>
+						void handleAgentAsk({ lon: contextMenu.lon, lat: contextMenu.lat }, contextMenu.features, question)
+					}
+					onClose={() => setContextMenu(null)}
+					onCopyCoords={() => {}}
+					onInspect={() => {
+						setClickedFeatures(contextMenu.features)
+						setInspectPoint({ lon: contextMenu.lon, lat: contextMenu.lat })
+						setInspectRasterReading(
+							sampleTopRasterAtPoint(
+								sortedLayers,
+								visibleLayerIds,
+								layerOrder,
+								contextMenu.lon,
+								contextMenu.lat,
+								rasterCache,
+							),
+						)
+					}}
+					onMeasureFrom={() => {
+						setMeasureMode("distance")
+						setTimeout(() => measureClickRef.current?.([contextMenu.lon, contextMenu.lat]), 50)
+					}}
+					onQuickDelineate={() =>
+						void handleQuickDelineate({ lon: contextMenu.lon, lat: contextMenu.lat }, contextMenu.features)
+					}
+					onRemoveLayer={
+						contextMenu.features.length > 0
+							? async () => {
+									const layerId = contextMenu.features[0].layerId
+									try {
+										await MapServiceClient.removeMapLayer(RemoveMapLayerRequest.create({ layerId }))
+									} catch (err) {
+										setAgentStatus(err instanceof Error ? err.message : "Could not remove layer")
+									}
+								}
+							: undefined
+					}
+					onSaveFeature={(format) => void saveFeaturesToWorkspace(contextMenu.features, format)}
+					x={contextMenu.x}
+					y={contextMenu.y}
+				/>
+			)}
 
 			<MapBottomBar
 				bearing={viewState.bearing}
@@ -2521,7 +3448,7 @@ const fmtRasterValue = (v: number): string => {
 	return v.toPrecision(3)
 }
 
-const RasterLegend: React.FC<RasterLegendProps> = ({ layers, visibleLayerIds, mapStyle, cursorReading }) => {
+const _RasterLegend: React.FC<RasterLegendProps> = ({ layers, visibleLayerIds, mapStyle, cursorReading }) => {
 	const visibleRasters = layers.filter((l) => l.layerType === "raster" && visibleLayerIds.has(l.id))
 	if (visibleRasters.length === 0) {
 		return null
