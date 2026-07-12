@@ -1,4 +1,4 @@
-name: Diagnose Webview Install
+name: Repair Webview Lockfile
 
 on:
   pull_request:
@@ -10,11 +10,56 @@ on:
   workflow_dispatch:
 
 permissions:
-  contents: read
+  contents: write
 
 jobs:
-  diagnose:
-    name: Diagnose webview npm ci
+  repair-lockfile:
+    name: Regenerate and verify lockfile
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out pull-request branch
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.head_ref || github.ref_name }}
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Regenerate webview lockfile
+        run: |
+          cd webview-ui
+          npm install --package-lock-only --ignore-scripts
+
+      - name: Verify clean install on Linux
+        run: |
+          cd webview-ui
+          npm ci
+
+      - name: Upload repaired lockfile
+        uses: actions/upload-artifact@v4
+        with:
+          name: repaired-webview-lockfile
+          path: webview-ui/package-lock.json
+          if-no-files-found: error
+
+      - name: Commit repaired lockfile to branch
+        run: |
+          if git diff --quiet -- webview-ui/package-lock.json; then
+            echo "Lockfile was already synchronized."
+            exit 0
+          fi
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add webview-ui/package-lock.json
+          git commit -m "fix: synchronize webview package lock"
+          target="${GITHUB_HEAD_REF:-${GITHUB_REF_NAME}}"
+          git push origin "HEAD:${target}"
+
+  verify-lockfile:
+    name: Verify webview npm ci (${{ matrix.os }})
+    needs: repair-lockfile
     strategy:
       fail-fast: false
       matrix:
@@ -27,41 +72,18 @@ jobs:
       - name: Check out repository
         uses: actions/checkout@v4
 
+      - name: Download repaired lockfile
+        uses: actions/download-artifact@v4
+        with:
+          name: repaired-webview-lockfile
+          path: webview-ui
+
       - name: Set up Node.js
         uses: actions/setup-node@v4
         with:
           node-version: 22
 
-      - name: Record tool versions
+      - name: Verify clean webview install
         run: |
-          node --version
-          npm --version
-
-      - name: Run clean webview install and capture diagnostics
-        id: install
-        continue-on-error: true
-        run: |
-          set +e
           cd webview-ui
-          npm ci --verbose > ../webview-npm-ci-${{ runner.os }}.log 2>&1
-          status=$?
-          echo "exit_code=$status" >> "$GITHUB_OUTPUT"
-          exit 0
-
-      - name: Show diagnostic tail
-        if: always()
-        run: |
-          echo "npm ci exit code: ${{ steps.install.outputs.exit_code }}"
-          tail -n 160 "webview-npm-ci-${{ runner.os }}.log" || true
-
-      - name: Upload complete diagnostic log
-        if: always()
-        uses: actions/upload-artifact@v4
-        with:
-          name: webview-npm-ci-${{ runner.os }}
-          path: webview-npm-ci-${{ runner.os }}.log
-          if-no-files-found: error
-
-      - name: Fail when npm ci failed
-        if: steps.install.outputs.exit_code != '0'
-        run: exit 1
+          npm ci
