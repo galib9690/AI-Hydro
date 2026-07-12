@@ -155,11 +155,12 @@ nav:
 
   - User Guide:
     - VS Code Extension: guide/vscode-extension.md
+    - AI-Hydro Studio: studio/index.md
     - Map Panel: guide/map.md
     - Data Fetch: guide/data-fetch.md
     - Spectral Indices: guide/spectral-indices.md
     - Tool Discovery: guide/tool-discovery.md
-    - HTML Preview: guide/html-preview.md
+    - HTML Preview (legacy runtime guide): guide/html-preview.md
     - Skills: guide/skills.md
     - Connectors: guide/connectors.md
     - Models & Providers: guide/providers.md
@@ -167,6 +168,14 @@ nav:
     - Project Workspace: guide/project-session.md
     - Researcher Profile: guide/researcher-profile.md
     - Literature Module: guide/literature.md
+
+  - Studio & Learn:
+    - Architecture Overview: architecture/studio-overview.md
+    - Quarto Integration: architecture/quarto-learning-integration.md
+    - Naming and UX: product/studio-naming-and-ux.md
+    - Agent Delivery Contract: product/agent-delivery-contract.md
+    - Delivery Roadmap: roadmaps/studio-learn-roadmap.md
+    - Architecture Decision: decisions/ADR-001-ai-hydro-studio.md
 
   - Tool Reference:
     - Overview: tools/index.md
