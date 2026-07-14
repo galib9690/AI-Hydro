@@ -231,6 +231,29 @@ const BOOK_MODULES: readonly BookModuleRuntimeContract[] = [
 			"all_methods_nonnegative_on_nonnegative_time_grid=True",
 		],
 	},
+	{
+		id: "hmfp.curve-number-runoff.05",
+		title: "Explore NRCS Curve Number Event Runoff",
+		stateCellId: "hmfp.curve-number-runoff.05.state-create",
+		stateOutput: [
+			"curve_number=80",
+			"storm_rainfall_mm=50.0",
+			"direct_runoff_mm=13.802",
+			"runoff_volume_m3=138024.802",
+			"runoff_fraction=0.276050",
+		],
+		plotCellId: "hmfp.curve-number-runoff.05.state-read-plot",
+		errorCellId: "hmfp.curve-number-runoff.05.intentional-error",
+		errorOutput: ["intentional repeated-abstraction diagnostic", "0.833079 mm, not the cumulative-event result 13.802480 mm"],
+		recoveryCellId: "hmfp.curve-number-runoff.05.error-recovery",
+		recoveryOutput: [
+			"recovered_after_error=True",
+			"all_runoff_depths_bounded=True",
+			"curve_number_monotonic=True",
+			"cn100_runoff_equals_rainfall=True",
+			"cumulative_increment_sum_matches_total=True",
+		],
+	},
 ] as const
 
 const expectedModuleIndex = BOOK_MODULES.findIndex(({ id }) => id === expectedBookModuleId)
