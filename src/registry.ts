@@ -39,6 +39,12 @@ const AiHydroCommands = {
 	GeeDisconnect: prefix + ".gee.disconnect",
 	HtmlPreviewButton: prefix + ".htmlPreviewButtonClicked",
 	AddFileToHtmlPreview: prefix + ".addFileToHtmlPreview",
+	// ADR-004 (AI-Hydro Studio naming): Studio-branded command aliases. Each
+	// delegates to the exact same handler as its htmlPreview* counterpart
+	// above — these are display-title aliases, not a second implementation.
+	OpenInStudio: prefix + ".openInStudio",
+	ShowStudio: prefix + ".showStudio",
+	AddArtifactToStudio: prefix + ".addArtifactToStudio",
 	ValidateModule: prefix + ".validateModule",
 	SkillsButton: prefix + ".skillsButtonClicked",
 	LearningPacksInstall: prefix + ".learningPacks.install",

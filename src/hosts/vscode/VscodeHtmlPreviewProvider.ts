@@ -92,7 +92,13 @@ export class VscodeHtmlPreviewProvider {
 			return
 		}
 
-		const panel = vscode.window.createWebviewPanel("aihydroHtmlPreviewView", "AI-Hydro HTML Preview", column, {
+		// User-facing tab label only (ADR-004: AI-Hydro Studio naming). The
+		// webview's own internal document <title> (set in buildShellHtml, read
+		// by e2e tests via frame.title()) is deliberately left unchanged — VS
+		// Code never surfaces that internal document title anywhere in its own
+		// chrome, so renaming it would only add e2e-matcher churn for zero
+		// user-visible benefit. viewType also stays put (internal identifier).
+		const panel = vscode.window.createWebviewPanel("aihydroHtmlPreviewView", "AI-Hydro Studio", column, {
 			enableScripts: true,
 			retainContextWhenHidden: true,
 			localResourceRoots: VscodeHtmlPreviewProvider.computeLocalResourceRoots(),

@@ -290,6 +290,15 @@ export async function activate(context: vscode.ExtensionContext) {
 		}),
 	)
 
+	// ADR-004 (AI-Hydro Studio naming): "Open in Studio" and "Show Studio" are
+	// display-title aliases for the same reveal-or-create panel action above
+	// — there is no distinct "open" vs "show" behavior to invent, so both
+	// delegate to the identical command rather than duplicating its logic.
+	context.subscriptions.push(
+		vscode.commands.registerCommand(commands.OpenInStudio, () => vscode.commands.executeCommand(commands.HtmlPreviewButton)),
+		vscode.commands.registerCommand(commands.ShowStudio, () => vscode.commands.executeCommand(commands.HtmlPreviewButton)),
+	)
+
 	// Register "AI-Hydro: Experiment Table" — reads a session's _experiments
 	// slot and renders the metric matrix; no Python round-trip required.
 	context.subscriptions.push(
@@ -501,6 +510,15 @@ export async function activate(context: vscode.ExtensionContext) {
 				)
 			}
 		}),
+	)
+
+	// ADR-004 (AI-Hydro Studio naming): "Add Artifact to Studio" — display-title
+	// alias forwarding to the identical handler above, args included (explorer
+	// multi-select passes the selected URIs as command arguments).
+	context.subscriptions.push(
+		vscode.commands.registerCommand(commands.AddArtifactToStudio, (...args: unknown[]) =>
+			vscode.commands.executeCommand(commands.AddFileToHtmlPreview, ...args),
+		),
 	)
 
 	// Graceful drag-and-drop: when a geospatial file is dragged onto the VS Code window

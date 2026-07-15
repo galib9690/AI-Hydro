@@ -331,6 +331,21 @@
 				"command": "aihydro.addFileToHtmlPreview",
 				"title": "Add to AI-Hydro HTML Preview",
 				"category": "AI-Hydro"
+			},
+			{
+				"command": "aihydro.openInStudio",
+				"title": "AI-Hydro: Open in Studio",
+				"category": "AI-Hydro"
+			},
+			{
+				"command": "aihydro.showStudio",
+				"title": "AI-Hydro: Show Studio",
+				"category": "AI-Hydro"
+			},
+			{
+				"command": "aihydro.addArtifactToStudio",
+				"title": "AI-Hydro: Add Artifact to Studio",
+				"category": "AI-Hydro"
 			}
 		],
 		"keybindings": [
