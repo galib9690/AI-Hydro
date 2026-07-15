@@ -22,6 +22,7 @@ import { FileServiceClient, HtmlPreviewServiceClient, UiServiceClient } from "@/
 import { AIHYDRO_PREVIEW_STYLE, CELL_BRIDGE_SCRIPT } from "./aihydroCellBridge"
 import { CourseHeader } from "./CourseHeader"
 import { resolveAgentCourseNavigation } from "./courseAgentNavigation"
+import { applyArtifactBaseHref, FRAGMENT_NAV_GUARD_SCRIPT } from "./artifactBaseHref"
 import { EditContextRibbon } from "./EditContextRibbon"
 import { HtmlPreviewToolbar } from "./HtmlPreviewToolbar"
 import {
@@ -165,6 +166,17 @@ function buildArtifactContextScript(item?: HtmlPreviewItem): string {
 // map is present).
 
 type RenderPath = "srcdoc" | "src" | "none"
+
+// Set by ArtifactPreviewService.registerFile() when the artifact's directory
+// looks like a rendered Quarto/multi-file site (site_libs/ + search.json
+// siblings). Not currently used to change the render path — see the
+// "multi-file site asset loading" note in artifactBaseHref.ts and
+// docs/audits/publication-fidelity-root-cause.md in the Studio repo for why
+// srcdoc cannot serve these artifacts' sibling assets, and what a follow-up
+// fix requires. Exported for the tests and for that follow-up to build on.
+export function isMultiFileSite(item?: HtmlPreviewItem): boolean {
+	return item?.metadata?.multiFileSite === "true"
+}
 
 function pickRenderPath(item?: HtmlPreviewItem): RenderPath {
 	if (!item) {
@@ -346,8 +358,14 @@ const HtmlPreviewView: React.FC<HtmlPreviewViewProps> = ({ item, sidePanelOpen =
 			return ""
 		}
 		const html = item.htmlContent
+		// Installed packs get the strict child-document CSP + base (which strips
+		// any authored <base>); every other artifact gets just the base href so
+		// relative assets (Quarto site_libs, figures) resolve. See
+		// artifactBaseHref.ts for the trailing-slash and authored-base rules.
 		const finalize = (injectedHtml: string) =>
-			isInstalledLearningPack(item) ? applyInstalledPackCsp(injectedHtml, item.dirUri) : injectedHtml
+			isInstalledLearningPack(item)
+				? applyInstalledPackCsp(injectedHtml, item.dirUri)
+				: applyArtifactBaseHref(injectedHtml, item.dirUri)
 		const artifactContext = buildArtifactContextScript(item)
 		const headCloseIdx = html.search(/<\/head\s*>/i)
 		const bodyCloseIdx = html.search(/<\/body\s*>/i)
@@ -362,6 +380,7 @@ const HtmlPreviewView: React.FC<HtmlPreviewViewProps> = ({ item, sidePanelOpen =
 		// Injection order in <head> open tag:
 		//   artifactContext (sets window.__aihydroArtifact)
 		//   DIAG_SCRIPT (global error hook)
+		//   FRAGMENT_NAV_GUARD_SCRIPT (keeps #fragment links in-document under <base>)
 		//   AIHYDRO_BRIDGE_CORE_SCRIPT (sets window.__aihydroBridge, adapter registry)
 		//   AIHYDRO_BRIDGE_LEAFLET_SCRIPT (registers data-aihydro-map adapter)
 		//   AIHYDRO_BRIDGE_CITATION_SCRIPT (registers cite[data-aihydro-cite-key] adapter)
@@ -376,6 +395,7 @@ const HtmlPreviewView: React.FC<HtmlPreviewViewProps> = ({ item, sidePanelOpen =
 				withHeadAssets.slice(0, closeIdx + 1) +
 				artifactContext +
 				DIAG_SCRIPT +
+				FRAGMENT_NAV_GUARD_SCRIPT +
 				AIHYDRO_BRIDGE_CORE_SCRIPT +
 				AIHYDRO_BRIDGE_LEAFLET_SCRIPT +
 				AIHYDRO_BRIDGE_CITATION_SCRIPT +
@@ -394,6 +414,7 @@ const HtmlPreviewView: React.FC<HtmlPreviewViewProps> = ({ item, sidePanelOpen =
 		return finalize(
 			artifactContext +
 			DIAG_SCRIPT +
+			FRAGMENT_NAV_GUARD_SCRIPT +
 			AIHYDRO_BRIDGE_CORE_SCRIPT +
 			AIHYDRO_BRIDGE_LEAFLET_SCRIPT +
 			AIHYDRO_BRIDGE_CITATION_SCRIPT +
