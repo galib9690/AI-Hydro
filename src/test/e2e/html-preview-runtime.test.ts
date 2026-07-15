@@ -17,6 +17,9 @@ const runtimeE2E = e2e.extend<{ workspaceDir: string }>({
 		})
 		cpSync(path.join(phase0Fixtures, "standalone-module.html"), path.join(workspaceDir, "phase0", "standalone-module.html"))
 		cpSync(path.join(phase0Fixtures, "interrupt-module.html"), path.join(workspaceDir, "phase0", "interrupt-module.html"))
+		cpSync(path.join(phase0Fixtures, "quarto-fidelity"), path.join(workspaceDir, "phase0", "quarto-fidelity"), {
+			recursive: true,
+		})
 
 		const pythonInterpreter = process.env.AIHYDRO_E2E_PYTHON
 		if (!pythonInterpreter) {
@@ -87,7 +90,11 @@ async function openWorkspaceFile(page: Page, relativePath: string, confirmPlainH
 	}
 }
 
-async function waitForFrame(page: Page, predicate: (frame: Frame) => Promise<boolean>): Promise<Frame> {
+async function waitForFrame(
+	page: Page,
+	predicate: (frame: Frame) => Promise<boolean>,
+	timeout = 30_000,
+): Promise<Frame> {
 	let match: Frame | undefined
 	await expect
 		.poll(
@@ -107,7 +114,7 @@ async function waitForFrame(page: Page, predicate: (frame: Frame) => Promise<boo
 				}
 				return false
 			},
-			{ timeout: 30_000 },
+			{ timeout },
 		)
 		.toBe(true)
 	return match as Frame
@@ -117,14 +124,18 @@ async function waitForShell(page: Page): Promise<Frame> {
 	return waitForFrame(page, async (frame) => (await frame.title()) === "AI-Hydro HTML Preview")
 }
 
-async function waitForShellWithSrcdoc(page: Page, marker: string): Promise<Frame> {
-	return waitForFrame(page, async (frame) => {
-		if ((await frame.title()) !== "AI-Hydro HTML Preview") {
-			return false
-		}
-		const srcdoc = await frame.locator("iframe").first().getAttribute("srcdoc")
-		return srcdoc?.includes(marker) ?? false
-	})
+async function waitForShellWithSrcdoc(page: Page, marker: string, timeout = 30_000): Promise<Frame> {
+	return waitForFrame(
+		page,
+		async (frame) => {
+			if ((await frame.title()) !== "AI-Hydro HTML Preview") {
+				return false
+			}
+			const srcdoc = await frame.locator("iframe").first().getAttribute("srcdoc")
+			return srcdoc?.includes(marker) ?? false
+		},
+		timeout,
+	)
 }
 
 async function countCourseOptions(page: Page): Promise<number> {
@@ -252,4 +263,40 @@ runtimeE2E("HTML Preview starts and executes a standalone module @phase0-smoke",
 	const output = artifact.locator('[data-aihydro-cell-id="standalone-python"] .aihydro-output')
 	await expect(output).toContainText("standalone_execution=ok", { timeout: 60_000 })
 	await expect(output).toContainText("42")
+})
+
+runtimeE2E("HTML Preview injects a correct base href for a multi-file Quarto site @phase0-smoke", async ({ page }) => {
+	await page.route(/https:\/\/fonts\.(googleapis|gstatic)\.com\/.*/, (route) => route.abort())
+	await openWorkspaceFile(page, "phase0/quarto-fidelity/labs/relative-assets.html", true)
+	// This is the first interaction in an isolated run of this test (cold
+	// matplotlib font-cache build + extension-host activation both land in
+	// this window), unlike the shared-fixture tests above that reach this
+	// point warmed up — give it double the default poll budget.
+	const shell = await waitForShellWithSrcdoc(page, "quarto-fidelity-fixture", 60_000)
+
+	// The generalized base-href injection must produce a trailing-slash base
+	// pointed at the artifact's own directory (not one level too high — see
+	// artifactBaseHref.ts's trailing-slash rule).
+	const srcdoc = await shell.locator("iframe").first().getAttribute("srcdoc")
+	const baseMatch = srcdoc?.match(/<base href="([^"]+)">/)
+	expect(baseMatch, "srcdoc must contain an injected <base href>").toBeTruthy()
+	expect(baseMatch?.[1].endsWith("/")).toBe(true)
+	expect(baseMatch?.[1].endsWith("/labs/")).toBe(true)
+
+	// Fragment links must stay in-document under the injected <base>: without
+	// the document-level guard, a bare <base> turns "#section-two" into a
+	// navigation away from the srcdoc document instead of an in-page scroll.
+	const artifact = await waitForFrame(page, async (frame) => (await frame.locator("h1#title").count()) === 1)
+	await artifact.locator("#toc-link").click()
+	await expect(artifact.locator("#section-two")).toBeInViewport()
+	await expect(artifact.locator("h1#title")).toHaveCount(1)
+
+	// KNOWN GAP (documented in artifactBaseHref.ts and the Studio repo's
+	// publication-fidelity-root-cause audit): a correct base href is
+	// necessary but not sufficient — a nested srcdoc iframe cannot actually
+	// fetch the resolved cross-origin vscode-resource:// sibling stylesheet
+	// (verified empirically; even a same-directory sibling 404s regardless
+	// of localResourceRoots coverage). Loading the actual CSS requires
+	// materializing the composed HTML to a real file and navigating `src` to
+	// it — tracked as a follow-up, not asserted here.
 })

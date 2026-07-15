@@ -1,4 +1,5 @@
 import type { HtmlPreviewItem } from "@shared/proto/cline/html_preview"
+import { buildBaseTag } from "./artifactBaseHref"
 
 export const LEARNING_PACK_METADATA_KIND = "learning-pack-v1"
 
@@ -83,8 +84,7 @@ export function learningPackScopeFromItem(item?: HtmlPreviewItem): LearningPackS
 export function applyInstalledPackCsp(html: string, dirUri?: string): string {
 	const withoutAuthoredCsp = html.replace(AUTHORED_CSP_META, "").replace(AUTHORED_BASE, "")
 	const csp = buildInstalledPackCsp(dirUri)
-	const normalizedDir = dirUri ? `${dirUri.replace(/\/+$/u, "")}/` : ""
-	const base = normalizedDir ? `<base href="${normalizedDir.replace(/&/gu, "&amp;").replace(/"/gu, "&quot;")}">` : ""
+	const base = dirUri ? buildBaseTag(dirUri) : ""
 	const meta = `<meta http-equiv="Content-Security-Policy" content="${csp}">${base}`
 	const head = withoutAuthoredCsp.match(/<head\b[^>]*>/iu)
 	if (head?.index !== undefined) {

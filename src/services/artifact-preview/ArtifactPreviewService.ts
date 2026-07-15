@@ -3,6 +3,7 @@ import * as path from "node:path"
 import * as vscode from "vscode"
 import { type DetectedMode, detectMode } from "./detectMode"
 import { getHtmlUtf8ByteLength } from "./inlineHtmlPolicy"
+import { findQuartoSiteRoot } from "./quartoSiteRoot"
 
 /**
  * A single artifact tracked by the preview system.
@@ -86,14 +87,34 @@ export class ArtifactPreviewService {
 		const bytes = await vscode.workspace.fs.readFile(fileUri)
 		this.assertSize(bytes.byteLength, fileUri.fsPath)
 		const html = new TextDecoder("utf-8").decode(bytes)
+		// Multi-file Quarto sites reference sibling-of-parent assets
+		// (../site_libs/…). Root the detected site directory so those paths
+		// are at least servable to a top-level navigation, and flag the
+		// artifact via metadata so the webview can identify it. NOTE: a nested
+		// `srcdoc` iframe cannot fetch cross-origin `vscode-resource:` URLs at
+		// all (verified empirically — even a same-directory sibling 404s), so
+		// this root alone does not yet make the assets load through today's
+		// srcdoc render path; see the "KNOWN LIMITATION" note in
+		// artifactBaseHref.ts for what the follow-up fix requires. Explicit
+		// callers (Learning Pack installs, self-contained) keep their own root
+		// and never need this — they have no external assets to fetch.
+		let localResourceRoot = opts.localResourceRoot
+		let isMultiFileSite = false
+		if (!localResourceRoot) {
+			const siteRoot = findQuartoSiteRoot(path.dirname(fileUri.fsPath))
+			if (siteRoot && siteRoot !== path.dirname(fileUri.fsPath)) {
+				localResourceRoot = siteRoot
+				isMultiFileSite = true
+			}
+		}
 		const ref = this.buildRef({
 			fsPath: fileUri.fsPath,
 			title: opts.title ?? path.basename(fileUri.fsPath),
 			source: "file",
 			html,
 			preferredMode: opts.preferredMode,
-			metadata: opts.metadata,
-			localResourceRoot: opts.localResourceRoot,
+			metadata: isMultiFileSite ? { ...opts.metadata, multiFileSite: "true" } : opts.metadata,
+			localResourceRoot,
 		})
 		this.upsert(ref)
 		return ref
