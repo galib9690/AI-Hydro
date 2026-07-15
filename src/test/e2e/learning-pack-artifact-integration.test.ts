@@ -104,7 +104,7 @@ const artifactIntegrationE2E = e2e
 		},
 	})
 
-artifactIntegrationE2E.setTimeout(300_000)
+artifactIntegrationE2E.setTimeout(420_000)
 artifactIntegrationE2E.skip(!sourceArchive, "requires a pinned book-built Learning Pack artifact")
 
 async function waitForFrame(page: Page, predicate: (frame: Frame) => Promise<boolean>): Promise<Frame> {
@@ -164,6 +164,7 @@ interface BookModuleRuntimeContract {
 	stateCellId: string
 	stateOutput: (string | RegExp)[]
 	plotCellId: string
+	plotOutput?: (string | RegExp)[]
 	errorCellId: string
 	errorOutput: (string | RegExp)[]
 	recoveryCellId: string
@@ -282,6 +283,29 @@ const BOOK_MODULES: readonly BookModuleRuntimeContract[] = [
 			/cumulative_mass_residual_mm=-?0\.000000000000/,
 		],
 	},
+	{
+		id: "hmfp.norms-losses-gradients.07",
+		title: "Understand Norms, Losses, and Gradients",
+		stateCellId: "hmfp.norms-losses-gradients.07.state-create",
+		stateOutput: [
+			"runoff_scale=1.000000",
+			"residuals_mm_per_day=[0.0, 0.0, 1.0]",
+			"mse_mm2_per_day2=0.333333",
+			"analytic_gradient=2.666667",
+		],
+		plotCellId: "hmfp.norms-losses-gradients.07.state-read-plot",
+		plotOutput: ["optimal_scale=0.809524", "optimal_loss=0.079365"],
+		errorCellId: "hmfp.norms-losses-gradients.07.intentional-error",
+		errorOutput: ["intentional chain-rule diagnostic", "wrong_gradient=0.666667, correct_gradient=2.666667, gap=2.000000"],
+		recoveryCellId: "hmfp.norms-losses-gradients.07.error-recovery",
+		recoveryOutput: [
+			"gradient_check_passed=True",
+			"finite_difference_gradient=2.666667",
+			"updated_scale=0.866667",
+			"updated_loss=0.102222",
+			"one_step_loss_decreased=True",
+		],
+	},
 ] as const
 
 const expectedModuleIndex = BOOK_MODULES.findIndex(({ id }) => id === expectedBookModuleId)
@@ -309,7 +333,10 @@ async function executeBookModule(
 		await expect(stateOutput).toContainText(expected, { timeout: 60_000 })
 	}
 
-	await runCell(artifact, contract.plotCellId)
+	const plotOutput = await runCell(artifact, contract.plotCellId)
+	for (const expected of contract.plotOutput ?? []) {
+		await expect(plotOutput).toContainText(expected, { timeout: 60_000 })
+	}
 	const plotCell = artifact.locator(`[data-aihydro-cell-id="${contract.plotCellId}"]`)
 	await expectPng(plotCell)
 
