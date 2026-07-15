@@ -19,7 +19,7 @@ import { AIHYDRO_BRIDGE_CORE_SCRIPT } from "@/integrations/aihydro-bridge/core"
 import { AIHYDRO_BRIDGE_EDITOR_SCRIPT } from "@/integrations/aihydro-bridge/editor-adapter"
 import { AIHYDRO_BRIDGE_LEAFLET_SCRIPT } from "@/integrations/aihydro-bridge/leaflet-adapter"
 import { FileServiceClient, HtmlPreviewServiceClient, UiServiceClient } from "@/services/grpc-client"
-import { AIHYDRO_PREVIEW_STYLE, CELL_BRIDGE_SCRIPT } from "./aihydroCellBridge"
+import { AIHYDRO_DESIGN_SYSTEM_FONTS, AIHYDRO_PREVIEW_STYLE, CELL_BRIDGE_SCRIPT, usesAihydroDesignSystem } from "./aihydroCellBridge"
 import { CourseHeader } from "./CourseHeader"
 import { resolveAgentCourseNavigation } from "./courseAgentNavigation"
 import { applyArtifactBaseHref, FRAGMENT_NAV_GUARD_SCRIPT } from "./artifactBaseHref"
@@ -383,12 +383,26 @@ const HtmlPreviewView: React.FC<HtmlPreviewViewProps> = ({ item, sidePanelOpen =
 				? applyInstalledPackCsp(injectedHtml, item.dirUri)
 				: applyArtifactBaseHref(injectedHtml, item.dirUri)
 		const artifactContext = buildArtifactContextScript(item)
+		// The Google Fonts <link>s are a real network request — only pay for it
+		// when the artifact actually uses the .aihydro-* design system (or is a
+		// module), and never for installed Learning Packs (offline-capable;
+		// their CSP already blocks the request, but skipping it avoids the
+		// wasted attempt and console noise). CSS ownership boundary, redesign
+		// brief §8.4 — see aihydroCellBridge.ts's doc comment for the rest of
+		// the split (AIHYDRO_PREVIEW_STYLE itself stays unconditional: it's
+		// fully class-scoped and inert for artifacts that don't use it).
+		const designSystemFonts =
+			!isInstalledLearningPack(item) && usesAihydroDesignSystem(html) ? AIHYDRO_DESIGN_SYSTEM_FONTS : ""
 		const headCloseIdx = html.search(/<\/head\s*>/i)
 		const bodyCloseIdx = html.search(/<\/body\s*>/i)
 		const withHeadAssets =
 			headCloseIdx >= 0
-				? html.slice(0, headCloseIdx) + AIHYDRO_PREVIEW_STYLE + LEAFLET_NORMALIZER_STYLE + html.slice(headCloseIdx)
-				: AIHYDRO_PREVIEW_STYLE + LEAFLET_NORMALIZER_STYLE + html
+				? html.slice(0, headCloseIdx) +
+					designSystemFonts +
+					AIHYDRO_PREVIEW_STYLE +
+					LEAFLET_NORMALIZER_STYLE +
+					html.slice(headCloseIdx)
+				: designSystemFonts + AIHYDRO_PREVIEW_STYLE + LEAFLET_NORMALIZER_STYLE + html
 		// Insert the diagnostic hook immediately after <head> so it captures
 		// errors from external scripts. Insert the Leaflet normalizer near the
 		// end of <body> so Folium's own map variables already exist before we

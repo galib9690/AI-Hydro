@@ -194,6 +194,11 @@ runtimeE2E("HTML Preview executes the golden runtime matrix @phase0-full", async
 
 	await openWorkspaceFile(page, "phase0/golden-course/01-runtime-contract/module.html")
 	let shell = await waitForCourseShell(page)
+	// CSS ownership boundary (PR 4): a genuine AI-Hydro module gets the
+	// branded design-system fonts (requests to fonts.googleapis.com are
+	// aborted above, purely to keep this test network-independent — the
+	// assertion is on the injected srcdoc string, not on the request landing).
+	expect(await shell.locator("iframe").first().getAttribute("srcdoc")).toContain("fonts.googleapis.com")
 
 	let artifact = await waitForCellFrame(page, "fixture-state-create")
 	await runCell(artifact, "fixture-state-create")
@@ -247,6 +252,10 @@ runtimeE2E("HTML Preview executes the golden runtime matrix @phase0-full", async
 	// lives in the React shell frame, not the artifact iframe.
 	const staticShell = await waitForShell(page)
 	await expect(staticShell.getByText("This is a static document.", { exact: false })).toBeVisible({ timeout: 15_000 })
+	// CSS ownership boundary (PR 4): a plain document that never references
+	// .aihydro-* classes gets no branded fonts — it shouldn't pay for the
+	// network request the executable module above legitimately needs.
+	expect(await staticShell.locator("iframe").first().getAttribute("srcdoc")).not.toContain("fonts.googleapis.com")
 
 	await openWorkspaceFile(page, "phase0/standalone-module.html")
 	artifact = await waitForCellFrame(page, "standalone-python")

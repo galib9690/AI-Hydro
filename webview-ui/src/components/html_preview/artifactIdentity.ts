@@ -37,7 +37,7 @@ export interface ArtifactIdentity {
 
 const KNOWN_PROFILES = new Set(["aihydro", "web", "student", "instructor", "default", "pdf", "epub", "pack"])
 
-const MODULE_MANIFEST_MARKER = 'type="application/vnd.aihydro.module+json"'
+export const MODULE_MANIFEST_MARKER = 'type="application/vnd.aihydro.module+json"'
 
 /**
  * Whether the artifact's own HTML embeds an executable-module manifest script.
