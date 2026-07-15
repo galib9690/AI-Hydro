@@ -2,6 +2,9 @@ import { Empty } from "@shared/proto/cline/common"
 import { HtmlPreviewMode, PreviewHtmlRequest } from "@shared/proto/cline/html_preview"
 import { expect } from "chai"
 import { afterEach, beforeEach, describe, it } from "mocha"
+import * as fs from "node:fs"
+import * as os from "node:os"
+import * as path from "node:path"
 import * as sinon from "sinon"
 import { HostProvider } from "@/hosts/host-provider"
 import type { ArtifactRef } from "@/services/artifact-preview/ArtifactPreviewService"
@@ -56,9 +59,19 @@ describe("previewHtml", () => {
 		...overrides,
 	})
 
+	// previewHtml() existence-checks a file path (fs/promises access()) before
+	// registering it, so filePath-driven tests need a file that actually
+	// exists on disk — a literal "/abs/report.html" now short-circuits with a
+	// "file not found" toast instead of reaching registerFile().
+	let tempDir: string
+	let reportPath: string
+
 	beforeEach(() => {
 		ensureHostProviderStub()
 		sandbox = sinon.createSandbox()
+		tempDir = fs.mkdtempSync(path.join(os.tmpdir(), "aihydro-preview-html-test-"))
+		reportPath = path.join(tempDir, "report.html")
+		fs.writeFileSync(reportPath, "<div>on-disk report</div>")
 		svc = {
 			registerInline: sandbox.stub().resolves(makeRef({ source: "inline", id: "inline_1" })),
 			registerFile: sandbox.stub().resolves(makeRef({ source: "file", id: "file_1", mode: "interactive" })),
@@ -72,7 +85,10 @@ describe("previewHtml", () => {
 		sandbox.stub(console, "error")
 	})
 
-	afterEach(() => sandbox.restore())
+	afterEach(() => {
+		sandbox.restore()
+		fs.rmSync(tempDir, { recursive: true, force: true })
+	})
 
 	it("returns Empty and does not call addHtmlPreview when neither content nor path is given", async () => {
 		const result = await previewHtml(mockController, PreviewHtmlRequest.create({}))
@@ -104,13 +120,13 @@ describe("previewHtml", () => {
 		const req = PreviewHtmlRequest.create({
 			htmlContent: "",
 			title: "Report",
-			filePath: "/abs/report.html",
+			filePath: reportPath,
 		})
 		await previewHtml(mockController, req)
 
 		expect(svc.registerFile.calledOnce).to.be.true
 		const args = svc.registerFile.firstCall.args[0]
-		expect(args.fsPath).to.equal("/abs/report.html")
+		expect(args.fsPath).to.equal(reportPath)
 		expect(args.title).to.equal("Report")
 	})
 
@@ -118,7 +134,7 @@ describe("previewHtml", () => {
 		const req = PreviewHtmlRequest.create({
 			htmlContent: "<div>cached copy</div>",
 			title: "Report",
-			filePath: "/abs/report.html",
+			filePath: reportPath,
 		})
 		await previewHtml(mockController, req)
 		expect(svc.registerFile.calledOnce).to.be.true

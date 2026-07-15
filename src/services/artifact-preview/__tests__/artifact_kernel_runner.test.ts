@@ -84,6 +84,15 @@ describe("artifact_kernel_runner.py", function () {
 	})
 
 	it("degrades gracefully on a video cell when manim is unavailable", async () => {
+		// _render_manim_videos()'s own `from manim import Scene, tempconfig` is
+		// what triggers the graceful-degrade path — it runs unconditionally,
+		// before the cell's own content is inspected for a Scene subclass. A
+		// cell defining no Scene at all only reaches that import; whether
+		// manim is actually installed on the interpreter running this test
+		// determines which of the two DIFFERENT non-crashing outcomes below is
+		// correct, so both are accepted rather than assuming the interpreter
+		// lacks manim (it may not — this test previously assumed a bare CI
+		// venv and failed on any dev machine with manim installed).
 		const responses = await runKernel([
 			JSON.stringify({ op: "ping", id: "ping" }),
 			JSON.stringify({
@@ -94,13 +103,47 @@ describe("artifact_kernel_runner.py", function () {
 		])
 
 		const res = responses[1]
-		// With manim installed this renders MP4s; without it we still succeed
-		// (status ok) and surface a note rather than crashing the cell.
-		expect(res?.status).to.equal("ok")
-		const hasVideos = Array.isArray(res?.videos_mp4_base64) && (res?.videos_mp4_base64 as unknown[]).length > 0
-		if (!hasVideos) {
+		if (res?.status === "ok") {
+			// manim unavailable: ImportError caught, stderr note, no crash.
 			expect(String(res?.stderr)).to.include("Manim is not installed")
+		} else {
+			// manim available but this cell defines no Scene subclass: a
+			// real, structured error (not a crash) is the correct outcome.
+			expect(res?.status).to.equal("error")
+			expect(String(res?.error)).to.include("No user-defined manim Scene subclass")
 		}
+	})
+
+	it("renders an MP4 for a video cell that defines a manim Scene, when manim is installed", async function () {
+		this.timeout(30_000)
+		const manimAvailable = await new Promise<boolean>((resolve) => {
+			const probe = spawn("python3", ["-c", "import manim"])
+			probe.on("error", () => resolve(false))
+			probe.on("close", (code) => resolve(code === 0))
+		})
+		if (!manimAvailable) {
+			this.skip()
+		}
+
+		const responses = await runKernel([
+			JSON.stringify({ op: "ping", id: "ping" }),
+			JSON.stringify({
+				op: "exec",
+				id: "v",
+				code: [
+					"# __aihydro_render_video__",
+					"from manim import Scene, Circle, Create",
+					"class ProbeScene(Scene):",
+					"    def construct(self):",
+					"        self.play(Create(Circle()))",
+				].join("\n"),
+			}),
+		])
+
+		const res = responses[1]
+		expect(res?.status).to.equal("ok")
+		expect(Array.isArray(res?.videos_mp4_base64)).to.equal(true)
+		expect((res?.videos_mp4_base64 as unknown[]).length).to.be.greaterThan(0)
 	})
 
 	it("clears namespace on restart", async () => {

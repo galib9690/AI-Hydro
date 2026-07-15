@@ -39,13 +39,17 @@ Usage:
 </execute_command>
 
 ## read_file
-Description: Request to read the contents of a file at the specified path. Use this when you need to examine the contents of an existing file you do not know the contents of, for example to analyze code, review text files, or extract information from configuration files. Automatically extracts raw text from PDF and DOCX files. May not be suitable for other types of binary files, as it returns the raw content as a string. Do NOT use this tool to list the contents of a directory. Only use this tool on files.
+Description: Request to read the contents of a file at the specified path. Use this when you need to examine the contents of an existing file you do not know the contents of, for example to analyze code, review text files, or extract information from configuration files. Automatically extracts raw text from PDF and DOCX files. May not be suitable for other types of binary files, as it returns the raw content as a string. Do NOT use this tool to list the contents of a directory. Only use this tool on files. By default, reads the first 1000 lines of a file. Use start_line and end_line to read specific ranges, especially for large files.
 Parameters:
 - path: (required) The path of the file to read (relative to the current working directory /test/project)
+- start_line: (optional) The 1-indexed line number to start reading from. If not provided, reading starts from line 1. Use this to read specific sections of large files.
+- end_line: (optional) The 1-indexed line number to stop reading at (inclusive). If not provided, reads up to 1000 lines from start_line. Use this with start_line to read specific ranges.
 - task_progress: (optional) A checklist showing task progress after this tool use is completed. (See 'Updating Task Progress' section for more details)
 Usage:
 <read_file>
 <path>File path here</path>
+<start_line>1</start_line>
+<end_line>100</end_line>
 <task_progress>Checklist here (optional)</task_progress>
 </read_file>
 
