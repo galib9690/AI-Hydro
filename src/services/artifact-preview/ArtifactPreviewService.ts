@@ -3,6 +3,8 @@ import * as path from "node:path"
 import * as vscode from "vscode"
 import { type DetectedMode, detectMode } from "./detectMode"
 import { getHtmlUtf8ByteLength } from "./inlineHtmlPolicy"
+import { inlineRelativeAssets } from "./inlineRelativeAssets"
+import { findQuartoSiteRoot } from "./quartoSiteRoot"
 
 /**
  * A single artifact tracked by the preview system.
@@ -85,15 +87,37 @@ export class ArtifactPreviewService {
 		const fileUri = vscode.Uri.file(path.resolve(opts.fsPath))
 		const bytes = await vscode.workspace.fs.readFile(fileUri)
 		this.assertSize(bytes.byteLength, fileUri.fsPath)
-		const html = new TextDecoder("utf-8").decode(bytes)
+		let html = new TextDecoder("utf-8").decode(bytes)
+		// Multi-file Quarto sites reference sibling-of-parent assets
+		// (../site_libs/…) via relative <link>/<script> tags. A nested srcdoc
+		// iframe cannot fetch those cross-origin `vscode-resource:` URLs at
+		// all — verified empirically, including that a `src`-navigated nested
+		// iframe pointed directly at the resource scheme hits VS Code's own
+		// frame protections instead (chrome-error, not just a blocked fetch).
+		// So instead of trying to make an external fetch succeed, inline the
+		// referenced stylesheets/scripts directly into the document text (see
+		// inlineRelativeAssets.ts) — no separate request, no cross-origin
+		// boundary to cross. Root the detected site directory too (harmless,
+		// and covers whatever this pass doesn't inline, e.g. images).
+		let localResourceRoot = opts.localResourceRoot
+		let isMultiFileSite = false
+		if (!localResourceRoot) {
+			const dirPath = path.dirname(fileUri.fsPath)
+			const siteRoot = findQuartoSiteRoot(dirPath)
+			if (siteRoot && siteRoot !== dirPath) {
+				localResourceRoot = siteRoot
+				isMultiFileSite = true
+				html = await inlineRelativeAssets(html, dirPath)
+			}
+		}
 		const ref = this.buildRef({
 			fsPath: fileUri.fsPath,
 			title: opts.title ?? path.basename(fileUri.fsPath),
 			source: "file",
 			html,
 			preferredMode: opts.preferredMode,
-			metadata: opts.metadata,
-			localResourceRoot: opts.localResourceRoot,
+			metadata: isMultiFileSite ? { ...opts.metadata, multiFileSite: "true" } : opts.metadata,
+			localResourceRoot,
 		})
 		this.upsert(ref)
 		return ref

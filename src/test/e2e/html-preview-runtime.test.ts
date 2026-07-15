@@ -17,6 +17,9 @@ const runtimeE2E = e2e.extend<{ workspaceDir: string }>({
 		})
 		cpSync(path.join(phase0Fixtures, "standalone-module.html"), path.join(workspaceDir, "phase0", "standalone-module.html"))
 		cpSync(path.join(phase0Fixtures, "interrupt-module.html"), path.join(workspaceDir, "phase0", "interrupt-module.html"))
+		cpSync(path.join(phase0Fixtures, "quarto-fidelity"), path.join(workspaceDir, "phase0", "quarto-fidelity"), {
+			recursive: true,
+		})
 
 		const pythonInterpreter = process.env.AIHYDRO_E2E_PYTHON
 		if (!pythonInterpreter) {
@@ -87,7 +90,11 @@ async function openWorkspaceFile(page: Page, relativePath: string, confirmPlainH
 	}
 }
 
-async function waitForFrame(page: Page, predicate: (frame: Frame) => Promise<boolean>): Promise<Frame> {
+async function waitForFrame(
+	page: Page,
+	predicate: (frame: Frame) => Promise<boolean>,
+	timeout = 30_000,
+): Promise<Frame> {
 	let match: Frame | undefined
 	await expect
 		.poll(
@@ -107,7 +114,7 @@ async function waitForFrame(page: Page, predicate: (frame: Frame) => Promise<boo
 				}
 				return false
 			},
-			{ timeout: 30_000 },
+			{ timeout },
 		)
 		.toBe(true)
 	return match as Frame
@@ -117,14 +124,18 @@ async function waitForShell(page: Page): Promise<Frame> {
 	return waitForFrame(page, async (frame) => (await frame.title()) === "AI-Hydro HTML Preview")
 }
 
-async function waitForShellWithSrcdoc(page: Page, marker: string): Promise<Frame> {
-	return waitForFrame(page, async (frame) => {
-		if ((await frame.title()) !== "AI-Hydro HTML Preview") {
-			return false
-		}
-		const srcdoc = await frame.locator("iframe").first().getAttribute("srcdoc")
-		return srcdoc?.includes(marker) ?? false
-	})
+async function waitForShellWithSrcdoc(page: Page, marker: string, timeout = 30_000): Promise<Frame> {
+	return waitForFrame(
+		page,
+		async (frame) => {
+			if ((await frame.title()) !== "AI-Hydro HTML Preview") {
+				return false
+			}
+			const srcdoc = await frame.locator("iframe").first().getAttribute("srcdoc")
+			return srcdoc?.includes(marker) ?? false
+		},
+		timeout,
+	)
 }
 
 async function countCourseOptions(page: Page): Promise<number> {
@@ -275,3 +286,41 @@ runtimeE2E(
 		await expect(page.getByRole("tab", { name: "AI-Hydro Studio", exact: false })).toBeVisible({ timeout: 30_000 })
 	},
 )
+
+runtimeE2E("HTML Preview injects a correct base href for a multi-file Quarto site @phase0-smoke", async ({ page }) => {
+	await page.route(/https:\/\/fonts\.(googleapis|gstatic)\.com\/.*/, (route) => route.abort())
+	await openWorkspaceFile(page, "phase0/quarto-fidelity/labs/relative-assets.html", true)
+	// This is the first interaction in an isolated run of this test (cold
+	// matplotlib font-cache build + extension-host activation both land in
+	// this window), unlike the shared-fixture tests above that reach this
+	// point warmed up — give it double the default poll budget.
+	const shell = await waitForShellWithSrcdoc(page, "quarto-fidelity-fixture", 60_000)
+
+	// The generalized base-href injection must produce a trailing-slash base
+	// pointed at the artifact's own directory (not one level too high — see
+	// artifactBaseHref.ts's trailing-slash rule).
+	const srcdoc = await shell.locator("iframe").first().getAttribute("srcdoc")
+	const baseMatch = srcdoc?.match(/<base href="([^"]+)">/)
+	expect(baseMatch, "srcdoc must contain an injected <base href>").toBeTruthy()
+	expect(baseMatch?.[1].endsWith("/")).toBe(true)
+	expect(baseMatch?.[1].endsWith("/labs/")).toBe(true)
+
+	// The sibling stylesheet (../site_libs/…) must actually apply. A nested
+	// srcdoc iframe cannot fetch a resolved cross-origin vscode-resource:
+	// sibling asset at all (verified empirically — even a same-directory
+	// sibling 404s regardless of localResourceRoots coverage, and a
+	// `src`-navigated nested iframe pointed at the resource scheme directly
+	// hits VS Code's own frame protections instead). So the extension inlines
+	// the referenced stylesheet into the document text itself
+	// (inlineRelativeAssets.ts) — no separate fetch, nothing to block.
+	const artifact = await waitForFrame(page, async (frame) => (await frame.locator("h1#title").count()) === 1)
+	expect(srcdoc).toContain('data-aihydro-inlined-from="../site_libs/quarto-test/page.css"')
+	await expect(artifact.locator("h1#title")).toHaveCSS("color", "rgb(7, 130, 193)")
+
+	// Fragment links must stay in-document under the injected <base>: without
+	// the document-level guard, a bare <base> turns "#section-two" into a
+	// navigation away from the srcdoc document instead of an in-page scroll.
+	await artifact.locator("#toc-link").click()
+	await expect(artifact.locator("#section-two")).toBeInViewport()
+	await expect(artifact.locator("h1#title")).toHaveCount(1)
+})

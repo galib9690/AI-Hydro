@@ -104,7 +104,7 @@ const artifactIntegrationE2E = e2e
 		},
 	})
 
-artifactIntegrationE2E.setTimeout(300_000)
+artifactIntegrationE2E.setTimeout(420_000)
 artifactIntegrationE2E.skip(!sourceArchive, "requires a pinned book-built Learning Pack artifact")
 
 async function waitForFrame(page: Page, predicate: (frame: Frame) => Promise<boolean>): Promise<Frame> {
@@ -164,6 +164,7 @@ interface BookModuleRuntimeContract {
 	stateCellId: string
 	stateOutput: (string | RegExp)[]
 	plotCellId: string
+	plotOutput?: (string | RegExp)[]
 	errorCellId: string
 	errorOutput: (string | RegExp)[]
 	recoveryCellId: string
@@ -231,6 +232,80 @@ const BOOK_MODULES: readonly BookModuleRuntimeContract[] = [
 			"all_methods_nonnegative_on_nonnegative_time_grid=True",
 		],
 	},
+	{
+		id: "hmfp.curve-number-runoff.05",
+		title: "Explore NRCS Curve Number Event Runoff",
+		stateCellId: "hmfp.curve-number-runoff.05.state-create",
+		stateOutput: [
+			"curve_number=80",
+			"storm_rainfall_mm=50.0",
+			"direct_runoff_mm=13.802",
+			"runoff_volume_m3=138024.802",
+			"runoff_fraction=0.276050",
+		],
+		plotCellId: "hmfp.curve-number-runoff.05.state-read-plot",
+		errorCellId: "hmfp.curve-number-runoff.05.intentional-error",
+		errorOutput: ["intentional repeated-abstraction diagnostic", "0.833079 mm, not the cumulative-event result 13.802480 mm"],
+		recoveryCellId: "hmfp.curve-number-runoff.05.error-recovery",
+		recoveryOutput: [
+			"recovered_after_error=True",
+			"all_runoff_depths_bounded=True",
+			"curve_number_monotonic=True",
+			"cn100_runoff_equals_rainfall=True",
+			"cumulative_increment_sum_matches_total=True",
+		],
+	},
+	{
+		id: "hmfp.hbv-style-stores.06",
+		title: "Build an HBV-Style Store-and-Flux Model",
+		stateCellId: "hmfp.hbv-style-stores.06.state-create",
+		stateOutput: [
+			"initial_soil_storage_mm=60.0",
+			"day1_recharge_mm=3.600",
+			"day1_total_runoff_mm=3.570",
+			"final_soil_moisture_mm=68.506",
+			"final_upper_zone_mm=4.663",
+			"final_lower_zone_mm=19.735",
+			"maximum_daily_mass_residual_mm=0.000000000000",
+		],
+		plotCellId: "hmfp.hbv-style-stores.06.state-read-plot",
+		errorCellId: "hmfp.hbv-style-stores.06.intentional-error",
+		errorOutput: [
+			"intentional internal-transfer diagnostic",
+			"combined residual is 1.000000 mm, exactly the omitted 1.000000 mm transfer",
+		],
+		recoveryCellId: "hmfp.hbv-style-stores.06.error-recovery",
+		recoveryOutput: [
+			"recovered_after_error=True",
+			"internal_transfers_cancel=True",
+			"maximum_store_residual_mm=0.000000000000",
+			"maximum_daily_mass_residual_mm=0.000000000000",
+			/cumulative_mass_residual_mm=-?0\.000000000000/,
+		],
+	},
+	{
+		id: "hmfp.norms-losses-gradients.07",
+		title: "Understand Norms, Losses, and Gradients",
+		stateCellId: "hmfp.norms-losses-gradients.07.state-create",
+		stateOutput: [
+			"runoff_scale=1.000000",
+			"residuals_mm_per_day=[0.0, 0.0, 1.0]",
+			"mse_mm2_per_day2=0.333333",
+			"analytic_gradient=2.666667",
+		],
+		plotCellId: "hmfp.norms-losses-gradients.07.state-read-plot",
+		plotOutput: ["optimal_scale=0.809524", "optimal_loss=0.079365"],
+		errorCellId: "hmfp.norms-losses-gradients.07.intentional-error",
+		errorOutput: ["intentional chain-rule diagnostic", "wrong_gradient=0.666667, correct_gradient=2.666667, gap=2.000000"],
+		recoveryCellId: "hmfp.norms-losses-gradients.07.error-recovery",
+		recoveryOutput: [
+			"gradient_check_passed=True",
+			"finite_difference_gradient=2.666667",
+			"updated_scale=0.866667",
+			"updated_loss=0.102222",
+			"one_step_loss_decreased=True",
+		],
+	},
 ] as const
 
 const expectedModuleIndex = BOOK_MODULES.findIndex(({ id }) => id === expectedBookModuleId)
@@ -258,7 +333,10 @@ async function executeBookModule(
 		await expect(stateOutput).toContainText(expected, { timeout: 60_000 })
 	}
 
-	await runCell(artifact, contract.plotCellId)
+	const plotOutput = await runCell(artifact, contract.plotCellId)
+	for (const expected of contract.plotOutput ?? []) {
+		await expect(plotOutput).toContainText(expected, { timeout: 60_000 })
+	}
 	const plotCell = artifact.locator(`[data-aihydro-cell-id="${contract.plotCellId}"]`)
 	await expectPng(plotCell)
 
@@ -454,6 +532,8 @@ artifactIntegrationE2E(
 		for (const expected of resumedContract.stateOutput) {
 			await expect(recreatedAfterRestart).toContainText(expected, { timeout: 60_000 })
 		}
+		await runCell(resumedArtifact, resumedContract.plotCellId)
+		await expectPng(resumedArtifact.locator(`[data-aihydro-cell-id="${resumedContract.plotCellId}"]`))
 		await interruptInstalledModule(page, resumedContract, workspaceDir)
 	},
 )

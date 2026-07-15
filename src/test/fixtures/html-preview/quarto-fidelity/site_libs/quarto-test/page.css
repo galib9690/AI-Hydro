@@ -1,0 +1,9 @@
+/* Distinctive, unambiguous rules the runtime test asserts as computed style.
+   If this file fails to load (broken base URL / missing resource root), the
+   heading falls back to the UA default color and the test fails. */
+h1#title {
+	color: rgb(7, 130, 193);
+}
+body {
+	margin-left: 37px;
+}

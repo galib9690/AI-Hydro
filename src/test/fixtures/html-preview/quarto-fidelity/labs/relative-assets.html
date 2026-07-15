@@ -1,0 +1,22 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+	<meta charset="utf-8">
+	<title>quarto-fidelity-fixture</title>
+	<!-- Sibling-of-parent stylesheet, exactly how Quarto references site_libs.
+	     Resolvable only when the preview injects a correctly normalized base
+	     element AND the site root is in localResourceRoots. -->
+	<link rel="stylesheet" href="../site_libs/quarto-test/page.css">
+</head>
+<body>
+	<!-- quarto-fidelity-fixture srcdoc marker -->
+	<h1 id="title">Relative Asset Fidelity</h1>
+	<nav>
+		<a id="toc-link" href="#section-two">Jump to section two</a>
+	</nav>
+	<div style="height: 3000px">spacer</div>
+	<h2 id="section-two">Section Two</h2>
+	<p>Fragment-link target. Reaching this without navigating away proves the
+	document-level guard keeps TOC anchors in-document under the injected base.</p>
+</body>
+</html>
