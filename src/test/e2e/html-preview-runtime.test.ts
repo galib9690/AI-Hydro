@@ -242,6 +242,11 @@ runtimeE2E("HTML Preview executes the golden runtime matrix @phase0-full", async
 	await openWorkspaceFile(page, "index.html", true)
 	await waitForFrame(page, async (frame) => (await frame.getByRole("heading", { name: "Test Workspace" }).count()) === 1)
 	await expect.poll(async () => countCourseOptions(page)).toBe(0)
+	// A plain static doc (no executable module manifest) shows the
+	// static-document explanation in the shell (PR 3 / brief §8.2). The notice
+	// lives in the React shell frame, not the artifact iframe.
+	const staticShell = await waitForShell(page)
+	await expect(staticShell.getByText("This is a static document.", { exact: false })).toBeVisible({ timeout: 15_000 })
 
 	await openWorkspaceFile(page, "phase0/standalone-module.html")
 	artifact = await waitForCellFrame(page, "standalone-python")
