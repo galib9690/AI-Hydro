@@ -23,6 +23,7 @@ import { AIHYDRO_PREVIEW_STYLE, CELL_BRIDGE_SCRIPT } from "./aihydroCellBridge"
 import { CourseHeader } from "./CourseHeader"
 import { resolveAgentCourseNavigation } from "./courseAgentNavigation"
 import { applyArtifactBaseHref, FRAGMENT_NAV_GUARD_SCRIPT } from "./artifactBaseHref"
+import { isStaticDocument } from "./artifactIdentity"
 import { EditContextRibbon } from "./EditContextRibbon"
 import { HtmlPreviewToolbar } from "./HtmlPreviewToolbar"
 import {
@@ -235,7 +236,7 @@ function sendModuleState(
 }
 
 const HtmlPreviewView: React.FC<HtmlPreviewViewProps> = ({ item, sidePanelOpen = true, onToggleSidePanel }) => {
-	const { setManifest, loadWorkspaceFile } = useHtmlPreviewContext()
+	const { setManifest, loadWorkspaceFile, manifestsById } = useHtmlPreviewContext()
 	const learningPackScope = useMemo(() => learningPackScopeFromItem(item), [item?.id, item?.metadata])
 	// Phase A: detect a course.json in the active module's parent folder
 	const { course, courseRoot, currentModuleId } = useCourse(item?.filePath)
@@ -343,10 +344,25 @@ const HtmlPreviewView: React.FC<HtmlPreviewViewProps> = ({ item, sidePanelOpen =
 	const [canRedo, setCanRedo] = useState(false)
 	// Resolver for the async save-document round-trip with the iframe
 	const pendingSaveResolverRef = useRef<((html: string) => void) | null>(null)
+	// Per-item dismissal of the "this is a static document" explanation banner.
+	const [dismissedStaticNoticeIds, setDismissedStaticNoticeIds] = useState<Set<string>>(new Set())
 
 	const renderPath = useMemo<RenderPath>(
 		() => pickRenderPath(item),
 		[item?.id, item?.contentHash, item?.htmlContent?.length, item?.webviewUri],
+	)
+
+	// A plain static document (no executable module manifest, not a pack) can't
+	// run cells; explain that rather than silently offering dead controls
+	// (redesign brief §8.2). Suppress the notice once the manifest arrives and
+	// proves the doc IS executable, or once the user dismisses it.
+	const showStaticNotice = useMemo(
+		() =>
+			Boolean(item) &&
+			renderPath !== "none" &&
+			isStaticDocument(item, item ? manifestsById[item.id] : undefined) &&
+			!(item && dismissedStaticNoticeIds.has(item.id)),
+		[item, manifestsById, renderPath, dismissedStaticNoticeIds],
 	)
 
 	// Pre-pend a tiny error/console forwarder so we can introspect what
@@ -1213,6 +1229,9 @@ const HtmlPreviewView: React.FC<HtmlPreviewViewProps> = ({ item, sidePanelOpen =
 					pendingCount={pendingChangeCount}
 				/>
 			)}
+			{showStaticNotice && item && (
+				<StaticDocumentNotice onDismiss={() => setDismissedStaticNoticeIds((prev) => new Set(prev).add(item.id))} />
+			)}
 			<div style={iframeWrapperStyle}>
 				{renderPath === "none" ? (
 					<NoUriMessage item={item} />
@@ -1419,6 +1438,56 @@ function ensureSpinStyle() {
 	el.textContent = `@keyframes aihydro-spin { to { transform: rotate(360deg); } }`
 	document.head.appendChild(el)
 }
+
+// Explains why a plain static document offers no Run controls, and how to get
+// an executable version instead (redesign brief §8.2). A thin, dismissible
+// strip above the iframe — it doesn't block reading the document.
+const StaticDocumentNotice: React.FC<{ onDismiss: () => void }> = ({ onDismiss }) => (
+	<div
+		role="note"
+		style={{
+			display: "flex",
+			alignItems: "flex-start",
+			gap: 8,
+			padding: "6px 10px",
+			fontSize: 11,
+			lineHeight: 1.4,
+			color: "var(--vscode-foreground, #ccc)",
+			background: "var(--vscode-inputValidation-infoBackground, rgba(100,150,240,0.12))",
+			borderBottom: "1px solid var(--vscode-inputValidation-infoBorder, rgba(100,150,240,0.4))",
+		}}>
+		<span aria-hidden="true" style={{ fontSize: 12, lineHeight: 1.3 }}>
+			ℹ️
+		</span>
+		<span style={{ flex: 1, minWidth: 0 }}>
+			<strong>This is a static document.</strong> It has no AI-Hydro executable module manifest, so Python cells can't
+			run here. Open an AI-Hydro-profile render of this page, or install its Learning Pack, to run cells.
+		</span>
+		<button
+			aria-label="Dismiss static-document notice"
+			onClick={onDismiss}
+			style={{
+				flexShrink: 0,
+				width: 18,
+				height: 18,
+				display: "inline-flex",
+				alignItems: "center",
+				justifyContent: "center",
+				padding: 0,
+				background: "transparent",
+				border: "none",
+				color: "inherit",
+				cursor: "pointer",
+				opacity: 0.6,
+				fontSize: 13,
+				borderRadius: 3,
+			}}
+			title="Dismiss"
+			type="button">
+			×
+		</button>
+	</div>
+)
 
 const LoadingOverlay: React.FC = () => {
 	ensureSpinStyle()

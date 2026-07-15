@@ -2,6 +2,7 @@ import React, { useCallback, useEffect, useRef, useState } from "react"
 import { AccordionSection } from "@/components/common/AccordionSection"
 import { useExtensionState } from "../../context/ExtensionStateContext"
 import { useHtmlPreviewContext } from "../../context/HtmlPreviewContext"
+import { type ArtifactIdentity, deriveArtifactIdentity } from "./artifactIdentity"
 import { CommentSidebar } from "./CommentSidebar"
 import { CourseNavigator } from "./CourseNavigator"
 import HtmlPreviewView from "./HtmlPreviewView"
@@ -362,6 +363,7 @@ export const HtmlPreviewPanel: React.FC = () => {
 												authorLine={authorLine}
 												displayTitle={displayTitle}
 												fg={fg}
+												identity={deriveArtifactIdentity(item, manifest)}
 												isActive={isActive}
 												isModule={Boolean(manifest)}
 												key={item.id}
@@ -797,16 +799,46 @@ const EmptyState: React.FC<{ onAddFile: () => void; isDragOver: boolean; workspa
 // Rich 3-line card for loaded items: icon + title + author + metadata pill.
 // Uses onMouseEnter/Leave for hover-fade close button (no CSS modules needed).
 
+// Muted category colors for the capability badge — distinct hues, readable in
+// both themes because they sit on a translucent tint of the same hue.
+const CAPABILITY_BADGE_HUE: Record<ArtifactIdentity["capability"], string> = {
+	executable: "120, 200, 130", // green — runnable
+	module: "150, 190, 240", // blue — module, non-executable
+	"installed-pack": "200, 160, 240", // violet — signed pack
+	static: "170, 170, 170", // grey — inert document
+}
+
+const Badge: React.FC<{ label: string; rgb: string; title?: string }> = ({ label, rgb, title }) => (
+	<span
+		style={{
+			display: "inline-flex",
+			alignItems: "center",
+			fontSize: 9,
+			fontWeight: 600,
+			lineHeight: 1.2,
+			padding: "1px 5px",
+			borderRadius: 3,
+			color: `rgb(${rgb})`,
+			background: `rgba(${rgb}, 0.15)`,
+			border: `1px solid rgba(${rgb}, 0.35)`,
+			whiteSpace: "nowrap",
+		}}
+		title={title}>
+		{label}
+	</span>
+)
+
 const SidebarItemCard: React.FC<{
 	isActive: boolean
 	isModule: boolean
 	displayTitle: string
 	authorLine: string | undefined
 	subline: string
+	identity: ArtifactIdentity
 	fg: string
 	onSelect: () => void
 	onRemove: () => void
-}> = ({ isActive, isModule, displayTitle, authorLine, subline, fg, onSelect, onRemove }) => {
+}> = ({ isActive, isModule, displayTitle, authorLine, subline, identity, fg, onSelect, onRemove }) => {
 	const [hovered, setHovered] = useState(false)
 
 	const bg = isActive
@@ -886,6 +918,43 @@ const SidebarItemCard: React.FC<{
 						{subline}
 					</span>
 				)}
+
+				{/* Capability + profile badges — disambiguate same-named artifacts
+				    from different build profiles / editions (redesign brief §8.1). */}
+				<span style={{ display: "flex", gap: 4, marginTop: 2, flexWrap: "wrap" }}>
+					<Badge
+						label={identity.capabilityLabel}
+						rgb={CAPABILITY_BADGE_HUE[identity.capability]}
+						title={`Capability: ${identity.capabilityLabel}`}
+					/>
+					{identity.profile && (
+						<Badge
+							label={identity.profile}
+							rgb="150, 190, 240"
+							title={
+								identity.profileSource === "pack-edition"
+									? `Learning Pack edition: ${identity.profile}`
+									: `Build profile: ${identity.profile}`
+							}
+						/>
+					)}
+				</span>
+
+				{/* Disambiguating source path — the basename alone is often
+				    identical across profiles, so show the trailing segments. */}
+				<span
+					style={{
+						fontSize: 9,
+						color: metaColor,
+						opacity: 0.7,
+						overflow: "hidden",
+						textOverflow: "ellipsis",
+						whiteSpace: "nowrap",
+						marginTop: 1,
+					}}
+					title={identity.sourcePath}>
+					{identity.sourceLabel}
+				</span>
 			</span>
 
 			{/* Close button — fades in on hover */}
