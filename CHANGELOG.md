@@ -11,6 +11,15 @@ The companion Python package (`aihydro-tools`) has its own changelog at
 
 ## [Unreleased]
 
+### Added — AI-Hydro Studio naming (ADR-004)
+
+- The HTML Preview panel's VS Code tab now reads **AI-Hydro Studio**.
+- New command-palette entries `AI-Hydro: Open in Studio`, `AI-Hydro: Show
+  Studio`, and `AI-Hydro: Add Artifact to Studio`, alongside the existing
+  `HTML Preview` toolbar button and `Add to AI-Hydro HTML Preview` context
+  menu item, which keep working unchanged. No command, setting, or message
+  IDs were renamed.
+
 ---
 
 ## [0.2.6] — 2026-07-09

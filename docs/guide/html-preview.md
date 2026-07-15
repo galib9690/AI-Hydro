@@ -1,16 +1,18 @@
 ---
-description: The AI-Hydro HTML Preview panel — a built-in Jupyter-like execution environment for interactive HTML artifacts, learning modules, and data dashboards inside VS Code.
+description: AI-Hydro Studio (formerly the HTML Preview panel) — a built-in Jupyter-like execution environment for interactive HTML artifacts, learning modules, and data dashboards inside VS Code.
 ---
 
-# HTML Preview Panel
+# AI-Hydro Studio
 
-The AI-Hydro HTML Preview panel renders any HTML file inside VS Code with a full **built-in Python kernel** — no browser needed, no Jupyter server to start. Think of it as a lightweight, self-contained notebook environment embedded directly in the editor: the AI writes an interactive artifact, it opens automatically, and you can run Python cells, explore visualisations, and interact with sliders and quizzes without leaving VS Code.
+> Studio is the current name for what was previously called the "HTML Preview panel." The panel, commands, and settings you may already know as `HTML Preview` / `aihydro.htmlPreview*` keep working exactly as before — Studio adds new, better-named entry points alongside them rather than replacing anything.
+
+AI-Hydro Studio renders any HTML file inside VS Code with a full **built-in Python kernel** — no browser needed, no Jupyter server to start. Think of it as a lightweight, self-contained notebook environment embedded directly in the editor: the AI writes an interactive artifact, it opens automatically, and you can run Python cells, explore visualisations, and interact with sliders and quizzes without leaving VS Code.
 
 ---
 
 ## What It Is For
 
-The HTML Preview panel is designed for three main artifact types:
+Studio is designed for three main artifact types:
 
 | Artifact | Description |
 |---|---|
@@ -28,7 +30,9 @@ When the agent creates any of these using the `interactive-module-builder` skill
 
 **Manual — toolbar:** Click the **HTML Preview** button (`⊞` icon) in the AI-Hydro sidebar.
 
-**Manual — command palette:** Run `AI-Hydro: Open HTML Preview`.
+**Manual — command palette:** Run `AI-Hydro: Open in Studio` or `AI-Hydro: Show Studio`.
+
+**Manual — explorer context menu:** Right-click an `.html`/`.htm` file and choose **AI-Hydro: Add Artifact to Studio** (or the equivalent **Add to AI-Hydro HTML Preview**).
 
 **Manual — drag-and-drop:** Drag any `.html` file from the Explorer onto the panel once it is open.
 

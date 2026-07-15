@@ -265,6 +265,28 @@ runtimeE2E("HTML Preview starts and executes a standalone module @phase0-smoke",
 	await expect(output).toContainText("42")
 })
 
+runtimeE2E(
+	"AI-Hydro: Show Studio opens the panel with the Studio tab label @phase0-smoke",
+	async ({ page }) => {
+		await page.waitForLoadState("domcontentloaded")
+		await page.locator(".monaco-workbench").waitFor({ state: "visible", timeout: 20_000 })
+
+		await page.keyboard.press("F1")
+		const commandInput = page.locator(".quick-input-widget input")
+		await commandInput.waitFor({ state: "visible", timeout: 10_000 })
+		await page.keyboard.type("AI-Hydro: Show Studio")
+		await page.keyboard.press("Enter")
+
+		// The command is a display-title alias for the same reveal-or-create
+		// handler as the "HTML Preview" toolbar button — verify it actually
+		// opens the panel. waitForShell's poll already tolerates system-load
+		// variance under a full serial suite run; check that first so a slow
+		// but successful launch doesn't fail on the tab-label assertion alone.
+		await waitForShell(page)
+		await expect(page.getByRole("tab", { name: "AI-Hydro Studio", exact: false })).toBeVisible({ timeout: 30_000 })
+	},
+)
+
 runtimeE2E("HTML Preview injects a correct base href for a multi-file Quarto site @phase0-smoke", async ({ page }) => {
 	await page.route(/https:\/\/fonts\.(googleapis|gstatic)\.com\/.*/, (route) => route.abort())
 	await openWorkspaceFile(page, "phase0/quarto-fidelity/labs/relative-assets.html", true)
