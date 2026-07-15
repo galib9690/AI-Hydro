@@ -283,20 +283,22 @@ runtimeE2E("HTML Preview injects a correct base href for a multi-file Quarto sit
 	expect(baseMatch?.[1].endsWith("/")).toBe(true)
 	expect(baseMatch?.[1].endsWith("/labs/")).toBe(true)
 
+	// The sibling stylesheet (../site_libs/…) must actually apply. A nested
+	// srcdoc iframe cannot fetch a resolved cross-origin vscode-resource:
+	// sibling asset at all (verified empirically — even a same-directory
+	// sibling 404s regardless of localResourceRoots coverage, and a
+	// `src`-navigated nested iframe pointed at the resource scheme directly
+	// hits VS Code's own frame protections instead). So the extension inlines
+	// the referenced stylesheet into the document text itself
+	// (inlineRelativeAssets.ts) — no separate fetch, nothing to block.
+	const artifact = await waitForFrame(page, async (frame) => (await frame.locator("h1#title").count()) === 1)
+	expect(srcdoc).toContain('data-aihydro-inlined-from="../site_libs/quarto-test/page.css"')
+	await expect(artifact.locator("h1#title")).toHaveCSS("color", "rgb(7, 130, 193)")
+
 	// Fragment links must stay in-document under the injected <base>: without
 	// the document-level guard, a bare <base> turns "#section-two" into a
 	// navigation away from the srcdoc document instead of an in-page scroll.
-	const artifact = await waitForFrame(page, async (frame) => (await frame.locator("h1#title").count()) === 1)
 	await artifact.locator("#toc-link").click()
 	await expect(artifact.locator("#section-two")).toBeInViewport()
 	await expect(artifact.locator("h1#title")).toHaveCount(1)
-
-	// KNOWN GAP (documented in artifactBaseHref.ts and the Studio repo's
-	// publication-fidelity-root-cause audit): a correct base href is
-	// necessary but not sufficient — a nested srcdoc iframe cannot actually
-	// fetch the resolved cross-origin vscode-resource:// sibling stylesheet
-	// (verified empirically; even a same-directory sibling 404s regardless
-	// of localResourceRoots coverage). Loading the actual CSS requires
-	// materializing the composed HTML to a real file and navigating `src` to
-	// it — tracked as a follow-up, not asserted here.
 })
