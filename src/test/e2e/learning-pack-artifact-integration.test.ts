@@ -254,6 +254,34 @@ const BOOK_MODULES: readonly BookModuleRuntimeContract[] = [
 			"cumulative_increment_sum_matches_total=True",
 		],
 	},
+	{
+		id: "hmfp.hbv-style-stores.06",
+		title: "Build an HBV-Style Store-and-Flux Model",
+		stateCellId: "hmfp.hbv-style-stores.06.state-create",
+		stateOutput: [
+			"initial_soil_storage_mm=60.0",
+			"day1_recharge_mm=3.600",
+			"day1_total_runoff_mm=3.570",
+			"final_soil_moisture_mm=68.506",
+			"final_upper_zone_mm=4.663",
+			"final_lower_zone_mm=19.735",
+			"maximum_daily_mass_residual_mm=0.000000000000",
+		],
+		plotCellId: "hmfp.hbv-style-stores.06.state-read-plot",
+		errorCellId: "hmfp.hbv-style-stores.06.intentional-error",
+		errorOutput: [
+			"intentional internal-transfer diagnostic",
+			"combined residual is 1.000000 mm, exactly the omitted 1.000000 mm transfer",
+		],
+		recoveryCellId: "hmfp.hbv-style-stores.06.error-recovery",
+		recoveryOutput: [
+			"recovered_after_error=True",
+			"internal_transfers_cancel=True",
+			"maximum_store_residual_mm=0.000000000000",
+			"maximum_daily_mass_residual_mm=0.000000000000",
+			/cumulative_mass_residual_mm=-?0\.000000000000/,
+		],
+	},
 ] as const
 
 const expectedModuleIndex = BOOK_MODULES.findIndex(({ id }) => id === expectedBookModuleId)
@@ -477,6 +505,8 @@ artifactIntegrationE2E(
 		for (const expected of resumedContract.stateOutput) {
 			await expect(recreatedAfterRestart).toContainText(expected, { timeout: 60_000 })
 		}
+		await runCell(resumedArtifact, resumedContract.plotCellId)
+		await expectPng(resumedArtifact.locator(`[data-aihydro-cell-id="${resumedContract.plotCellId}"]`))
 		await interruptInstalledModule(page, resumedContract, workspaceDir)
 	},
 )
