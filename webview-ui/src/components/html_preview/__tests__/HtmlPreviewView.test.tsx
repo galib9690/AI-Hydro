@@ -119,6 +119,31 @@ describe("HtmlPreviewView", () => {
 		expect(iframe.getAttribute("srcdoc")).to.contain("default-src *")
 	})
 
+	it("skips the Google Fonts network request for a generic artifact and for an installed pack", () => {
+		// CSS ownership boundary (PR 4): a plain report or Folium map never
+		// references .aihydro-* classes, and an installed pack is offline-
+		// capable — neither should pay for the font <link> network request.
+		const plainReport = { ...inlineItem, htmlContent: "<html><head></head><body><h1>Report</h1></body></html>" }
+		const { rerender } = render(<HtmlPreviewView item={plainReport} />)
+		let iframe = screen.getByTitle("Test Preview") as HTMLIFrameElement
+		expect(iframe.getAttribute("srcdoc")).not.to.contain("fonts.googleapis.com")
+
+		const packItem = {
+			...inlineItem,
+			htmlContent: '<html><body class="aihydro-module">pack content</body></html>',
+			metadata: { ...inlineItem.metadata, artifactKind: "learning-pack-v1" },
+		}
+		rerender(<HtmlPreviewView item={packItem} />)
+		iframe = screen.getByTitle("Test Preview") as HTMLIFrameElement
+		expect(iframe.getAttribute("srcdoc")).not.to.contain("fonts.googleapis.com")
+
+		// A genuine, non-pack AI-Hydro module DOES get the branded fonts.
+		const module = { ...inlineItem, htmlContent: '<html><body class="aihydro-module">module content</body></html>' }
+		rerender(<HtmlPreviewView item={module} />)
+		iframe = screen.getByTitle("Test Preview") as HTMLIFrameElement
+		expect(iframe.getAttribute("srcdoc")).to.contain("fonts.googleapis.com")
+	})
+
 	it("uses a single sandboxed profile (scripts allowed)", () => {
 		render(<HtmlPreviewView item={baseItem} />)
 		const iframe = screen.getByTitle("Test Preview") as HTMLIFrameElement

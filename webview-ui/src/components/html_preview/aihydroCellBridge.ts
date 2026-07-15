@@ -1,14 +1,41 @@
+import { MODULE_MANIFEST_MARKER } from "./artifactIdentity"
+
 /**
  * Injected into HTML artifact srcdoc:
- *   - AIHYDRO_PREVIEW_STYLE: AI-Hydro branded design system (one injection per artifact)
+ *   - AIHYDRO_DESIGN_SYSTEM_FONTS: Google Fonts <link> tags — a real network
+ *     request, so only injected for artifacts that actually use the design
+ *     system (see usesAihydroDesignSystem below). Never injected for installed
+ *     Learning Packs, which are signed, offline-capable artifacts; their CSP
+ *     already blocks the request, but skipping it avoids the wasted attempt
+ *     and CSP-violation console noise on every open (CSS ownership boundary,
+ *     redesign brief §8.4).
+ *   - AIHYDRO_PREVIEW_STYLE: the `.aihydro-*`-scoped rule block itself. Inert
+ *     for any artifact that doesn't use those class names (no bare `body`/
+ *     `h1`/`p`/`table` selectors — verified), so it stays unconditional; every
+ *     font-family value already falls back to system fonts when the Google
+ *     Fonts link above is skipped, so nothing visually breaks.
  *   - CELL_BRIDGE_SCRIPT:  cell execution bridge + window.aihydro helper API + manifest relay
  *
  * Brand tokens follow branding.md (Section 2 colours, Section 3 typography).
  * Modules using the documented class names get a consistent look without writing any CSS.
  */
-export const AIHYDRO_PREVIEW_STYLE = `
+export const AIHYDRO_DESIGN_SYSTEM_FONTS = `
 <link rel="preconnect" href="https://fonts.googleapis.com" crossorigin>
-<link href="https://fonts.googleapis.com/css2?family=Quicksand:wght@400;600;700&family=Poppins:wght@400;500;600&family=Nunito:wght@400;700&family=Comfortaa:wght@400;600&family=JetBrains+Mono&display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=Quicksand:wght@400;600;700&family=Poppins:wght@400;500;600&family=Nunito:wght@400;700&family=Comfortaa:wght@400;600&family=JetBrains+Mono&display=swap" rel="stylesheet">`
+
+/**
+ * Whether an artifact's own HTML actually uses the `.aihydro-*` design-system
+ * class names (or embeds the module manifest, the authoritative "this is an
+ * AI-Hydro module" signal — see artifactIdentity.ts's
+ * hasEmbeddedModuleManifest). A generic Folium map, Plotly chart, or Quarto
+ * page that never references these classes gets no benefit from the branded
+ * fonts, so it shouldn't pay for the network request.
+ */
+export function usesAihydroDesignSystem(html: string): boolean {
+	return html.includes("aihydro-module") || html.includes(MODULE_MANIFEST_MARKER)
+}
+
+export const AIHYDRO_PREVIEW_STYLE = `
 <style id="aihydro-preview-style">
 :root {
   --aihydro-blue: #00A3FF;
