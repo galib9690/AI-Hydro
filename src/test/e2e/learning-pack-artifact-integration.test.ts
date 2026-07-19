@@ -441,6 +441,68 @@ const BOOK_MODULES: readonly BookModuleRuntimeContract[] = [
 			"clean_test_rmse_mm_per_day=0.521080",
 		],
 	},
+	{
+		id: "hmfp.differentiable-state-space.10",
+		title: "Differentiate a Mass-Closing State-Space Reservoir",
+		stateCellId: "hmfp.differentiable-state-space.10.state-create",
+		stateOutput: [
+			"fit_target_ids=['D01', 'D02', 'D03', 'D04', 'D05', 'D06', 'D07', 'D08']",
+			"validation_target_ids=['D09', 'D10', 'D11', 'D12']",
+			"precipitation_shape=(12,); words=daily interval depths",
+			"target_contract=synthetic generator trace plus disclosed deterministic adjustments",
+		],
+		setupCells: [
+			{
+				id: "hmfp.differentiable-state-space.10.state-simulate",
+				output: [
+					"initial_release_fraction=0.200000",
+					"D01_runoff_mm=0.200000",
+					"D02_runoff_mm=0.960000",
+					"D02_next_storage_mm=3.840000",
+					"D02_runoff_sensitivity_mm=0.736000",
+					"initial_training_mse_mm2=0.384374",
+					"initial_training_gradient_mm2=-0.975490",
+				],
+			},
+			{
+				id: "hmfp.differentiable-state-space.10.state-fit",
+				output: [
+					"model_contract=mass-closing one-store state transition plus exact forward sensitivity",
+					"automatic_differentiation_framework=False",
+					"fit_validation_overlap=[]",
+					"fitted_release_fraction=0.353099",
+					"training_rmse_mm=0.020817",
+					"validation_rmse_mm=0.030870",
+					"heldout_targets_excluded=True",
+					"training_loss_decreased=True",
+				],
+			},
+		],
+		plotCellId: "hmfp.differentiable-state-space.10.state-read-plot",
+		plotOutput: [
+			"validation_table=id,reference,prediction,residual_mm",
+			"D09,1.921903,1.959509,+0.037606",
+			"D10,1.645237,1.620708,-0.024529",
+			"D11,4.256404,4.226325,-0.030079",
+			"D12,2.704163,2.734016,+0.029853",
+		],
+		errorCellId: "hmfp.differentiable-state-space.10.intentional-error",
+		errorOutput: [
+			"intentional stopped-state diagnostic",
+			"local_only=-1.363850 mm2",
+			"finite_difference=-0.975490 mm2",
+			"absolute_error=0.388361 mm2",
+		],
+		recoveryCellId: "hmfp.differentiable-state-space.10.error-recovery",
+		recoveryOutput: [
+			"gradient_check_passed=True",
+			"heldout_target_perturbation_invariant=True",
+			"mass_closure_passed=True",
+			"derivative_closure_passed=True",
+			"fitted_release_fraction=0.353099",
+			"validation_rmse_mm=0.030870",
+		],
+	},
 ] as const
 
 const expectedModuleIndex = BOOK_MODULES.findIndex(({ id }) => id === expectedBookModuleId)
