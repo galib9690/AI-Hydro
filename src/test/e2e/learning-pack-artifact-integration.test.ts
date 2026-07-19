@@ -140,7 +140,36 @@ async function waitForCourseShell(page: Page): Promise<Frame> {
 }
 
 async function waitForCellFrame(page: Page, cellId: string): Promise<Frame> {
-	return waitForFrame(page, async (frame) => (await frame.locator(`[data-aihydro-cell-id="${cellId}"]`).count()) === 1)
+	const selector = `[data-aihydro-cell-id="${cellId}"]`
+	const deadline = Date.now() + 60_000
+	while (Date.now() < deadline) {
+		for (const frame of page.frames()) {
+			if (frame.isDetached()) continue
+			try {
+				const count = await frame.locator(selector).count()
+				if (count !== 1) continue
+				let ancestor = frame.parentFrame()
+				let belongsToActivePreview = false
+				while (ancestor && !ancestor.isDetached()) {
+					if (
+						(await ancestor.title()) === "AI-Hydro HTML Preview" &&
+						(await ancestor.getByTitle("Course options").count()) === 1
+					) {
+						belongsToActivePreview = true
+						break
+					}
+					ancestor = ancestor.parentFrame()
+				}
+				if (belongsToActivePreview && !frame.isDetached() && (await frame.locator(selector).count()) === 1) {
+					return frame
+				}
+			} catch {
+				// VS Code may replace either the shell or srcdoc frame while navigation settles.
+			}
+		}
+		await page.waitForTimeout(100)
+	}
+	throw new Error(`Timed out waiting for one active executable cell: ${cellId}`)
 }
 
 async function runCell(frame: Frame, cellId: string): Promise<Locator> {
@@ -163,6 +192,10 @@ interface BookModuleRuntimeContract {
 	title: string
 	stateCellId: string
 	stateOutput: (string | RegExp)[]
+	setupCells?: readonly {
+		id: string
+		output: readonly (string | RegExp)[]
+	}[]
 	plotCellId: string
 	plotOutput?: (string | RegExp)[]
 	errorCellId: string
@@ -341,6 +374,73 @@ const BOOK_MODULES: readonly BookModuleRuntimeContract[] = [
 			"event_peak_timing_errors_days=[1.0, 1.0]",
 		],
 	},
+	{
+		id: "hmfp.basin-specific-lstm.09",
+		title: "Build a Basin-Specific LSTM Without Future Leakage",
+		stateCellId: "hmfp.basin-specific-lstm.09.state-create",
+		stateOutput: [
+			"scaler_fit_ids=['D01', 'D02', 'D03', 'D04', 'D05', 'D06', 'D07', 'D08', 'D09', 'D10', 'D11', 'D12']",
+			"training_mean=[2.166667, 1.0]",
+			"training_scale=[2.823512, 0.177951]",
+			"train_shape=(9, 4, 2); validation_shape=(3, 4, 2); test_shape=(3, 4, 2)",
+			"train_target_ids=['D04', 'D05', 'D06', 'D07', 'D08', 'D09', 'D10', 'D11', 'D12']",
+			"validation_target_ids=['D16', 'D17', 'D18']",
+			"test_target_ids=['D22', 'D23', 'D24']",
+		],
+		setupCells: [
+			{
+				id: "hmfp.basin-specific-lstm.09.state-encode",
+				output: [
+					"inspection_target_id=D08",
+					"inspection_window_ids=['D05', 'D06', 'D07', 'D08']",
+					"inspection_input_gate=[0.461467, 0.486913]",
+					"inspection_forget_gate=[0.773701, 0.76003]",
+					"inspection_candidate=[-0.020196, 0.411314]",
+					"inspection_output_gate=[0.627937, 0.65897]",
+					"inspection_hidden_dimensionless=[0.191348, 0.209111]",
+					"inspection_memory_dimensionless=[0.31472, 0.328675]",
+					"train_hidden_shape=(9, 2); words=samples by hidden features",
+				],
+			},
+			{
+				id: "hmfp.basin-specific-lstm.09.state-fit",
+				output: [
+					"model_contract=fixed-weight LSTM encoder plus train-only fitted ridge readout",
+					"end_to_end_lstm_training=False",
+					"readout_coefficients=[1.095217, 4.410821, -2.329272]",
+					"train_rmse_mm_per_day=0.142380",
+					"validation_rmse_mm_per_day=0.223108",
+					"test_rmse_mm_per_day=0.521080",
+					"chronological_split_passed=True",
+					"train_only_scaler_passed=True",
+					"future_target_excluded=True",
+				],
+			},
+		],
+		plotCellId: "hmfp.basin-specific-lstm.09.state-read-plot",
+		plotOutput: [
+			"test_prediction_table=id,reference,prediction,residual_mm_per_day",
+			"D22,2.603725,1.839639,-0.764086",
+			"D23,2.079082,1.652615,-0.426467",
+			"D24,1.510939,1.289866,-0.221073",
+		],
+		errorCellId: "hmfp.basin-specific-lstm.09.intentional-error",
+		errorOutput: [
+			"intentional leakage diagnostic",
+			"overlap=['D22', 'D23', 'D24']",
+			"leaked_test_rmse_mm_per_day=0.000000000000",
+		],
+		recoveryCellId: "hmfp.basin-specific-lstm.09.error-recovery",
+		recoveryOutput: [
+			"fit_test_overlap=[]",
+			"heldout_target_perturbation_invariant=True",
+			"chronological_split_passed=True",
+			"train_only_scaler_passed=True",
+			"future_target_excluded=True",
+			"held_out_recomputation_passed=True",
+			"clean_test_rmse_mm_per_day=0.521080",
+		],
+	},
 ] as const
 
 const expectedModuleIndex = BOOK_MODULES.findIndex(({ id }) => id === expectedBookModuleId)
@@ -367,6 +467,7 @@ async function executeBookModule(
 	for (const expected of contract.stateOutput) {
 		await expect(stateOutput).toContainText(expected, { timeout: 60_000 })
 	}
+	await executeSetupCells(artifact, contract)
 
 	const plotOutput = await runCell(artifact, contract.plotCellId)
 	for (const expected of contract.plotOutput ?? []) {
@@ -384,6 +485,15 @@ async function executeBookModule(
 		await expect(recoveryOutput).toContainText(expected, { timeout: 30_000 })
 	}
 	return { artifact, plotCell }
+}
+
+async function executeSetupCells(artifact: Frame, contract: BookModuleRuntimeContract): Promise<void> {
+	for (const setup of contract.setupCells ?? []) {
+		const output = await runCell(artifact, setup.id)
+		for (const expected of setup.output) {
+			await expect(output).toContainText(expected, { timeout: 60_000 })
+		}
+	}
 }
 
 async function blockExternalNetwork(page: Page): Promise<void> {
@@ -534,13 +644,16 @@ artifactIntegrationE2E(
 			completed: [courseEntryModuleId, ...BOOK_MODULES.slice(0, expectedModuleIndex).map(({ id }) => id)].sort(),
 		}
 		await expect
-			.poll(() => {
-				const progress = readOnlyCourseProgress(homeDir)
-				return {
-					currentModuleId: progress.currentModuleId,
-					completed: Object.keys(progress.completed).sort(),
-				}
-			})
+			.poll(
+				() => {
+					const progress = readOnlyCourseProgress(homeDir)
+					return {
+						currentModuleId: progress.currentModuleId,
+						completed: Object.keys(progress.completed).sort(),
+					}
+				},
+				{ timeout: 30_000 },
+			)
 			.toEqual(expectedProgress)
 
 		const firstPid = app.process().pid
@@ -567,6 +680,7 @@ artifactIntegrationE2E(
 		for (const expected of resumedContract.stateOutput) {
 			await expect(recreatedAfterRestart).toContainText(expected, { timeout: 60_000 })
 		}
+		await executeSetupCells(resumedArtifact, resumedContract)
 		await runCell(resumedArtifact, resumedContract.plotCellId)
 		await expectPng(resumedArtifact.locator(`[data-aihydro-cell-id="${resumedContract.plotCellId}"]`))
 		await interruptInstalledModule(page, resumedContract, workspaceDir)
