@@ -19,18 +19,23 @@ import { AIHYDRO_BRIDGE_CORE_SCRIPT } from "@/integrations/aihydro-bridge/core"
 import { AIHYDRO_BRIDGE_EDITOR_SCRIPT } from "@/integrations/aihydro-bridge/editor-adapter"
 import { AIHYDRO_BRIDGE_LEAFLET_SCRIPT } from "@/integrations/aihydro-bridge/leaflet-adapter"
 import { FileServiceClient, HtmlPreviewServiceClient, UiServiceClient } from "@/services/grpc-client"
-import { AIHYDRO_DESIGN_SYSTEM_FONTS, AIHYDRO_PREVIEW_STYLE, CELL_BRIDGE_SCRIPT, usesAihydroDesignSystem } from "./aihydroCellBridge"
-import { CourseHeader } from "./CourseHeader"
-import { resolveAgentCourseNavigation } from "./courseAgentNavigation"
+import {
+	AIHYDRO_DESIGN_SYSTEM_FONTS,
+	AIHYDRO_PREVIEW_STYLE,
+	CELL_BRIDGE_SCRIPT,
+	usesAihydroDesignSystem,
+} from "./aihydroCellBridge"
 import { applyArtifactBaseHref, FRAGMENT_NAV_GUARD_SCRIPT } from "./artifactBaseHref"
 import { isStaticDocument } from "./artifactIdentity"
+import { CourseHeader } from "./CourseHeader"
+import { courseNavigationKey, persistThenLoadCourseModule, resolveAgentCourseNavigation } from "./courseAgentNavigation"
 import { EditContextRibbon } from "./EditContextRibbon"
 import { HtmlPreviewToolbar } from "./HtmlPreviewToolbar"
 import {
 	applyInstalledPackCsp,
 	isInstalledLearningPack,
-	learningPackScopeFromItem,
 	type LearningPackScope,
+	learningPackScopeFromItem,
 } from "./installedPackCsp"
 import { LEAFLET_NORMALIZER_SCRIPT, LEAFLET_NORMALIZER_STYLE } from "./leafletNormalizer"
 import { reportPreviewEvent, requestSaveDocument, startPreviewAgentTask } from "./previewBridge"
@@ -241,15 +246,20 @@ const HtmlPreviewView: React.FC<HtmlPreviewViewProps> = ({ item, sidePanelOpen =
 	// Phase A: detect a course.json in the active module's parent folder
 	const { course, courseRoot, currentModuleId } = useCourse(item?.filePath)
 	const courseProgress = useCourseProgress(course, learningPackScope)
+	const navigationKey = courseNavigationKey(course?.courseId ?? "", learningPackScope)
 	// Persist "currently visiting" module ID whenever it changes (Phase B)
 	useEffect(() => {
 		if (course && currentModuleId) {
-			void courseProgress.setCurrent(currentModuleId)
+			void courseProgress
+				.setCurrent(currentModuleId)
+				.then((persisted) => {
+					if (persisted === null) {
+						console.warn("[HtmlPreviewView] Current course module could not be persisted")
+					}
+				})
+				.catch((error) => console.warn("[HtmlPreviewView] Current course module persistence failed:", error))
 		}
-		// We intentionally don't depend on courseProgress to avoid an infinite loop;
-		// only the IDs matter for triggering a save.
-		// eslint-disable-next-line react-hooks/exhaustive-deps
-	}, [course?.courseId, currentModuleId])
+	}, [course?.courseId, courseProgress.setCurrent, currentModuleId])
 	// Phase C: write an active-course pointer (~/.aihydro/active_course.json)
 	// so the MCP course tools know which course the user is viewing.
 	useEffect(() => {
@@ -285,14 +295,30 @@ const HtmlPreviewView: React.FC<HtmlPreviewViewProps> = ({ item, sidePanelOpen =
 			)
 			if (!target || !courseRoot) return
 			const fullPath = resolveModuleFilePath(courseRoot, target.path)
-			void loadWorkspaceFile(fullPath, target.title)
+			void persistThenLoadCourseModule(navigationKey, target.id, currentModuleId, courseProgress.setCurrent, () =>
+				loadWorkspaceFile(fullPath, target.title),
+			)
+				.then((loaded) => {
+					if (!loaded) {
+						console.warn("[HtmlPreviewView] Agent navigation cancelled because progress could not be persisted")
+					}
+				})
+				.catch((error) => console.warn("[HtmlPreviewView] Agent course navigation failed:", error))
 		}
 		window.addEventListener("message", onMessage)
 		return () => window.removeEventListener("message", onMessage)
-	}, [course, courseRoot, courseProgress, loadWorkspaceFile])
+	}, [
+		course,
+		courseRoot,
+		courseProgress.canAccess,
+		courseProgress.setCurrent,
+		currentModuleId,
+		loadWorkspaceFile,
+		navigationKey,
+	])
 
 	const handleCourseNavigate = useCallback(
-		(moduleId: string) => {
+		async (moduleId: string) => {
 			if (!course || !courseRoot) return
 			const target = course.modules.find((m) => m.id === moduleId)
 			if (!target) return
@@ -300,9 +326,30 @@ const HtmlPreviewView: React.FC<HtmlPreviewViewProps> = ({ item, sidePanelOpen =
 			// surfaced the click anyway, but this is defence-in-depth).
 			if (!courseProgress.canAccess(target)) return
 			const fullPath = resolveModuleFilePath(courseRoot, target.path)
-			void loadWorkspaceFile(fullPath, target.title)
+			try {
+				const loaded = await persistThenLoadCourseModule(
+					navigationKey,
+					moduleId,
+					currentModuleId,
+					courseProgress.setCurrent,
+					() => loadWorkspaceFile(fullPath, target.title),
+				)
+				if (!loaded) {
+					console.warn("[HtmlPreviewView] Course navigation cancelled because progress could not be persisted")
+				}
+			} catch (error) {
+				console.warn("[HtmlPreviewView] Course navigation failed:", error)
+			}
 		},
-		[course, courseRoot, loadWorkspaceFile, courseProgress],
+		[
+			course,
+			courseRoot,
+			courseProgress.canAccess,
+			courseProgress.setCurrent,
+			currentModuleId,
+			loadWorkspaceFile,
+			navigationKey,
+		],
 	)
 	const iframeRef = useRef<HTMLIFrameElement | null>(null)
 	const [diagnosticsOpen, setDiagnosticsOpen] = useState(false)
@@ -434,7 +481,9 @@ const HtmlPreviewView: React.FC<HtmlPreviewViewProps> = ({ item, sidePanelOpen =
 				withHeadAssets.slice(closeIdx + 1)
 			const bodyCloseAfterDiag = withDiag.search(/<\/body\s*>/i)
 			if (bodyCloseAfterDiag >= 0) {
-				return finalize(withDiag.slice(0, bodyCloseAfterDiag) + LEAFLET_NORMALIZER_SCRIPT + withDiag.slice(bodyCloseAfterDiag))
+				return finalize(
+					withDiag.slice(0, bodyCloseAfterDiag) + LEAFLET_NORMALIZER_SCRIPT + withDiag.slice(bodyCloseAfterDiag),
+				)
 			}
 			if (bodyCloseIdx >= 0) {
 				return finalize(withDiag + LEAFLET_NORMALIZER_SCRIPT)
@@ -443,15 +492,15 @@ const HtmlPreviewView: React.FC<HtmlPreviewViewProps> = ({ item, sidePanelOpen =
 		}
 		return finalize(
 			artifactContext +
-			DIAG_SCRIPT +
-			FRAGMENT_NAV_GUARD_SCRIPT +
-			AIHYDRO_BRIDGE_CORE_SCRIPT +
-			AIHYDRO_BRIDGE_LEAFLET_SCRIPT +
-			AIHYDRO_BRIDGE_CITATION_SCRIPT +
-			AIHYDRO_BRIDGE_EDITOR_SCRIPT +
-			CELL_BRIDGE_SCRIPT +
-			withHeadAssets +
-			LEAFLET_NORMALIZER_SCRIPT,
+				DIAG_SCRIPT +
+				FRAGMENT_NAV_GUARD_SCRIPT +
+				AIHYDRO_BRIDGE_CORE_SCRIPT +
+				AIHYDRO_BRIDGE_LEAFLET_SCRIPT +
+				AIHYDRO_BRIDGE_CITATION_SCRIPT +
+				AIHYDRO_BRIDGE_EDITOR_SCRIPT +
+				CELL_BRIDGE_SCRIPT +
+				withHeadAssets +
+				LEAFLET_NORMALIZER_SCRIPT,
 		)
 	}, [renderPath, item?.htmlContent, item?.id, item?.filePath, item?.dirUri, item?.metadata?.artifactKind])
 
@@ -1474,8 +1523,8 @@ const StaticDocumentNotice: React.FC<{ onDismiss: () => void }> = ({ onDismiss }
 			ℹ️
 		</span>
 		<span style={{ flex: 1, minWidth: 0 }}>
-			<strong>This is a static document.</strong> It has no AI-Hydro executable module manifest, so Python cells can't
-			run here. Open an AI-Hydro-profile render of this page, or install its Learning Pack, to run cells.
+			<strong>This is a static document.</strong> It has no AI-Hydro executable module manifest, so Python cells can't run
+			here. Open an AI-Hydro-profile render of this page, or install its Learning Pack, to run cells.
 		</span>
 		<button
 			aria-label="Dismiss static-document notice"
