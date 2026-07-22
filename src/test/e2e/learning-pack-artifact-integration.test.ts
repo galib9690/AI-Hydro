@@ -503,6 +503,70 @@ const BOOK_MODULES: readonly BookModuleRuntimeContract[] = [
 			"validation_rmse_mm=0.030870",
 		],
 	},
+	{
+		id: "hmfp.metrics-fdc-signatures-uncertainty.11",
+		title: "Evaluate Metrics, Flow-Duration Curves, Signatures, and Spread",
+		stateCellId: "hmfp.metrics-fdc-signatures-uncertainty.11.state-create",
+		stateOutput: [
+			"interval_ids=['D01', 'D02', 'D03', 'D04', 'D05', 'D06', 'D07', 'D08', 'D09', 'D10', 'D11', 'D12']",
+			"alignment_contract=simulated minus reference on identical daily interval IDs",
+			"delta_time_days=1.0",
+			"reference_total_depth_mm=23.000000",
+			"simulated_total_depth_mm=23.000000",
+			"residuals_mm_per_day=[0.0, 0.0, -2.0, 2.0, 0.0, 0.0, 0.0, -2.0, 2.0, 0.0, 0.0, 0.0]",
+		],
+		setupCells: [
+			{
+				id: "hmfp.metrics-fdc-signatures-uncertainty.11.state-metrics",
+				output: [
+					"rmse_mm_per_day=1.154701",
+					"nse=0.235060",
+					"kge_2009=0.617530",
+					"kge_correlation=0.617530",
+					"kge_variability_ratio=1.000000",
+					"kge_mean_ratio=1.000000",
+					"volume_bias_fraction=0.000000",
+				],
+			},
+			{
+				id: "hmfp.metrics-fdc-signatures-uncertainty.11.state-fdc-signatures",
+				output: [
+					"fdc_values_identical=True",
+					"reference_Q10_mm_per_day=4.700000",
+					"reference_Q50_mm_per_day=1.000000",
+					"reference_Q90_mm_per_day=1.000000",
+				],
+			},
+			{
+				id: "hmfp.metrics-fdc-signatures-uncertainty.11.state-envelope",
+				output: [
+					"scenario_spread_fraction=0.25",
+					"scenario_factors=[0.75, 0.875, 1.0, 1.125, 1.25]",
+					"scenario_coverage_fraction=0.666667",
+					"scenario_mean_width_mm_per_day=0.958333",
+					"scenario_contract=deterministic sensitivity members, not probability samples",
+				],
+			},
+		],
+		plotCellId: "hmfp.metrics-fdc-signatures-uncertainty.11.state-read-plot",
+		plotOutput: ["covered_interval_ids=['D01', 'D02', 'D05', 'D06', 'D07', 'D10', 'D11', 'D12']"],
+		errorCellId: "hmfp.metrics-fdc-signatures-uncertainty.11.intentional-error",
+		errorOutput: ["intentional sorted-metric diagnostic", "false_sorted_nse=1.000000"],
+		recoveryCellId: "hmfp.metrics-fdc-signatures-uncertainty.11.error-recovery",
+		recoveryOutput: [
+			"false_sorted_nse=1.000000",
+			"chronological_nse=0.235060",
+			"chronology_guard_passed=True",
+			"fdc_identity_passed=True",
+			"kge_component_diagnostic_passed=True",
+			"scenario_coverage_fraction=0.666667",
+			"scenario_mean_width_mm_per_day=0.958333",
+			"comparison_spread_fraction=0.35",
+			"comparison_coverage_fraction=0.666667",
+			"comparison_mean_width_mm_per_day=1.341667",
+			"scenario_tradeoff_passed=True",
+		],
+	},
 ] as const
 
 const expectedModuleIndex = BOOK_MODULES.findIndex(({ id }) => id === expectedBookModuleId)
