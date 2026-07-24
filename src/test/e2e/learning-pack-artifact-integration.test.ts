@@ -567,6 +567,68 @@ const BOOK_MODULES: readonly BookModuleRuntimeContract[] = [
 			"scenario_tradeoff_passed=True",
 		],
 	},
+	{
+		id: "hmfp.hydro-atoms-interpretation-audit.12",
+		title: "Interpret and Audit Static HYDRO-ATOMS Behavior",
+		stateCellId: "hmfp.hydro-atoms-interpretation-audit.12.state-create",
+		stateOutput: [
+			"provenance=authored synthetic logits; not learned and not checkpoint-derived",
+			"representative_parameter_bounds=",
+			"'f_cn': (0.5, 1.5, 'dimensionless')",
+			"'alpha_gw': (0.001, 0.5, 'day^-1')",
+		],
+		setupCells: [
+			{
+				id: "hmfp.hydro-atoms-interpretation-audit.12.state-compose",
+				output: [
+					"forest_sandy_gentle: total_logit=-0.750000, synthetic_f_cn=0.820821",
+					"crop_sandy_gentle: total_logit=0.450000, synthetic_f_cn=1.110639",
+					"composition_contract=six dimensionless terms summed before bounded mapping",
+				],
+			},
+			{
+				id: "hmfp.hydro-atoms-interpretation-audit.12.state-manipulate",
+				output: [
+					"selected_land_use_logit=0.40",
+					"selected_total_logit=0.450000",
+					"selected_f_cn=1.110639",
+					"monotonic_parameter_mapping_passed=True",
+					"interpretation=parameter direction only; basin runoff direction is untested",
+				],
+			},
+			{
+				id: "hmfp.hydro-atoms-interpretation-audit.12.state-unknown-type",
+				output: [
+					"known_type_atom_residual_logit=0.200000",
+					"unknown_type_atom_residual_logit=0.000000",
+					"unknown_type_total_logit=0.250000",
+					"unknown_type_synthetic_f_cn=1.062177",
+					"fallback_contract=only the exact-combination residual is zeroed",
+					"claim_boundary=computable output does not prove transfer",
+				],
+			},
+		],
+		plotCellId: "hmfp.hydro-atoms-interpretation-audit.12.state-aggregate-plot",
+		plotOutput: [
+			"area_fractions=[0.7, 0.3]",
+			"area_fraction_sum=1.000000",
+			"authored_hru_runoff_mm_per_day=[2.0, 5.0]",
+			"basin_runoff_depth_mm_per_day=2.900000",
+			"Figure text alternative:",
+		],
+		errorCellId: "hmfp.hydro-atoms-interpretation-audit.12.intentional-error",
+		errorOutput: ["intentional area-weight diagnostic", "invalid_sum=1.200000", "Do not silently normalize"],
+		recoveryCellId: "hmfp.hydro-atoms-interpretation-audit.12.error-recovery",
+		recoveryOutput: [
+			"authored_component_sum_passed=True",
+			"bounded_parameter_passed=True",
+			"unknown_type_residual_only_passed=True",
+			"monotonic_parameter_mapping_passed=True",
+			"area_weight_contract_passed=True",
+			"recovered_basin_runoff_mm_per_day=2.900000",
+			"claim_status=code behavior verified on authored synthetic values only",
+		],
+	},
 ] as const
 
 const expectedModuleIndex = BOOK_MODULES.findIndex(({ id }) => id === expectedBookModuleId)
