@@ -111,8 +111,14 @@ old_docs/**
 # Include default themes JSON files used in getTheme
 !src/integrations/theme/default-themes/**
 
-# Include icons
-!assets/icons/**
+# Include only assets referenced by the embedded manifest or README
+assets/**
+!assets/docs/aihydro-hero-animated.svg
+!assets/docs/aihydro-hero-static.png
+!assets/icons/icon.png
+!assets/icons/icon.svg
+!assets/icons/robot_panel_dark.png
+!assets/icons/robot_panel_light.png
 
 # Ignore E2E build files
 e2e-build.mjs

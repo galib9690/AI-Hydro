@@ -30,7 +30,7 @@ function packageManifest(commands = REQUIRED_LEARNING_PACK_COMMANDS) {
 
 async function writeVsix(
 	filePath,
-	{ commands, extraEntries = [], manifest = packageManifest(commands), omittedEntries = [] } = {},
+	{ commands, entryContent = {}, extraEntries = [], manifest = packageManifest(commands), omittedEntries = [] } = {},
 ) {
 	await new Promise((resolve, reject) => {
 		const output = fs.createWriteStream(filePath)
@@ -57,7 +57,22 @@ async function writeVsix(
 			) {
 				continue
 			}
-			archive.append("fixture", { name: entry })
+			const content =
+				entryContent[entry] ??
+				(entry === "extension/schemas/learning-pack/v1/pack.schema.json"
+					? JSON.stringify({
+							properties: {
+								compatibility: {
+									properties: {
+										packApi: { const: 1 },
+										runtimeContract: { const: "html-preview-v1" },
+									},
+								},
+								schemaVersion: { const: 1 },
+							},
+						})
+					: "fixture")
+			archive.append(content, { name: entry })
 		}
 		for (const entry of extraEntries) archive.append(entry.content, { name: entry.name })
 		archive.finalize()
@@ -82,6 +97,10 @@ test("accepts a compiled pack-capable development VSIX", async (context) => {
 
 	assert.equal(result.version, "0.2.7")
 	assert.deepEqual(result.learningPackCommands, REQUIRED_LEARNING_PACK_COMMANDS)
+	assert.equal(result.learningPackContract.schemaVersion, 1)
+	assert.equal(result.learningPackContract.packApi, 1)
+	assert.equal(result.learningPackContract.runtimeContract, "html-preview-v1")
+	assert.match(result.learningPackContract.schemaSha256, /^[0-9a-f]{64}$/)
 	assert.match(result.sha256, /^[0-9a-f]{64}$/)
 })
 
@@ -107,13 +126,25 @@ test("rejects an extension identity, version, or main mismatch", async (context)
 	await assert.rejects(() => verifyDevelopmentVsix(wrongMain), /package\.json main mismatch/)
 })
 
-test("rejects undeclared source or private workspace content", async (context) => {
+test("rejects undeclared source, private workspace, or asset content", async (context) => {
 	const vsix = temporaryVsix(context, "source-bearing.vsix")
 	await writeVsix(vsix, {
 		extraEntries: [{ content: "private implementation source", name: "extension/src/private.ts" }],
 	})
 
 	await assert.rejects(() => verifyDevelopmentVsix(vsix), /undeclared archive entry/)
+
+	const privateAsset = temporaryVsix(context, "private-asset.vsix")
+	await writeVsix(privateAsset, {
+		extraEntries: [{ content: "private roadmap", name: "extension/assets/private-roadmap.md" }],
+	})
+	await assert.rejects(() => verifyDevelopmentVsix(privateAsset), /undeclared archive entry/)
+
+	const opaqueAsset = temporaryVsix(context, "opaque-asset.vsix")
+	await writeVsix(opaqueAsset, {
+		extraEntries: [{ content: "opaque private bytes", name: "extension/assets/leaked.pem" }],
+	})
+	await assert.rejects(() => verifyDevelopmentVsix(opaqueAsset), /undeclared archive entry/)
 })
 
 test("rejects a missing runtime asset or Explorer install contribution", async (context) => {
@@ -128,12 +159,37 @@ test("rejects a missing runtime asset or Explorer install contribution", async (
 	manifest.contributes.menus["explorer/context"] = []
 	await writeVsix(noMenu, { manifest })
 	await assert.rejects(() => verifyDevelopmentVsix(noMenu), /Explorer install action/)
+
+	const badSchema = temporaryVsix(context, "bad-schema.vsix")
+	await writeVsix(badSchema, {
+		extraEntries: [],
+		omittedEntries: ["extension/schemas/learning-pack/v1/pack.schema.json"],
+	})
+	await assert.rejects(() => verifyDevelopmentVsix(badSchema), /missing required entry/)
+
+	const unsupportedSchema = temporaryVsix(context, "unsupported-schema.vsix")
+	await writeVsix(unsupportedSchema, {
+		entryContent: {
+			"extension/schemas/learning-pack/v1/pack.schema.json": JSON.stringify({
+				properties: {
+					compatibility: {
+						properties: {
+							packApi: { const: 2 },
+							runtimeContract: { const: "html-preview-v2" },
+						},
+					},
+					schemaVersion: { const: 2 },
+				},
+			}),
+		},
+	})
+	await assert.rejects(() => verifyDevelopmentVsix(unsupportedSchema), /supported v1 contract tuple/)
 })
 
 test("rejects a known secret pattern in otherwise allowed content", async (context) => {
 	const vsix = temporaryVsix(context, "secret-bearing.vsix")
 	await writeVsix(vsix, {
-		extraEntries: [{ content: `ghp_${"A".repeat(24)}`, name: "extension/readme.md" }],
+		entryContent: { "extension/readme.md": `ghp_${"A".repeat(24)}` },
 	})
 
 	await assert.rejects(() => verifyDevelopmentVsix(vsix), /possible GitHub token/)
@@ -151,10 +207,7 @@ test("rejects duplicate archive entries", async (context) => {
 test("rejects Unicode case-folded path collisions and symbolic links", async (context) => {
 	const collision = temporaryVsix(context, "case-collision.vsix")
 	await writeVsix(collision, {
-		extraEntries: [
-			{ content: "<svg/>", name: "extension/assets/straße.svg" },
-			{ content: "<svg/>", name: "extension/assets/strasse.svg" },
-		],
+		extraEntries: [{ content: "collision", name: "extension/aſſets/icons/icon.png" }],
 	})
 	await assert.rejects(() => verifyDevelopmentVsix(collision), /duplicate or case-colliding entry/)
 

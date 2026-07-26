@@ -190,6 +190,11 @@ A Jupyter-like execution environment embedded directly in VS Code, purpose-built
 
 #### Install a local Learning Pack
 
+Learning Packs require a build that actually declares the `aihydro.learningPacks.*`
+commands; Marketplace or Releases presence alone is not compatibility proof.
+Use the exact pack-capable runtime commit and VSIX digest named by a controlled
+handoff.
+
 Open the VS Code Command Palette and run **AI-Hydro: Install Learning Pack**, or
 right-click a local `.aihydropack` file and choose **Install Learning Pack**.
 Review the edition, signer fingerprint, compatibility, environment metadata

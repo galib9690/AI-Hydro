@@ -15,8 +15,13 @@ export const REQUIRED_LEARNING_PACK_COMMANDS = Object.freeze([
 export const REQUIRED_RUNTIME_ENTRIES = Object.freeze([
 	"[Content_Types].xml",
 	"extension.vsixmanifest",
+	"extension/LICENSE.txt",
 	"extension/assets/icons/icon.png",
 	"extension/assets/icons/icon.svg",
+	"extension/assets/icons/robot_panel_dark.png",
+	"extension/assets/icons/robot_panel_light.png",
+	"extension/assets/docs/aihydro-hero-animated.svg",
+	"extension/assets/docs/aihydro-hero-static.png",
 	"extension/dist/extension.js",
 	"extension/dist/services/artifact-preview/artifact_kernel_runner.py",
 	"extension/dist/tree-sitter-c.wasm",
@@ -36,7 +41,9 @@ export const REQUIRED_RUNTIME_ENTRIES = Object.freeze([
 	"extension/dist/tree-sitter.wasm",
 	"extension/node_modules/@vscode/codicons/dist/codicon.css",
 	"extension/node_modules/@vscode/codicons/dist/codicon.ttf",
+	"extension/changelog.md",
 	"extension/package.json",
+	"extension/readme.md",
 	"extension/schemas/learning-pack/v1/pack.schema.json",
 	"extension/standalone/runtime-files/vscode/enhanced-terminal.js",
 	"extension/walkthrough/step1.md",
@@ -63,7 +70,6 @@ const ALLOWED_ROOT_FILES = new Set([
 ])
 
 const ALLOWED_EXACT_FILES = new Set(REQUIRED_RUNTIME_ENTRIES)
-const ALLOWED_DIRECTORY_PREFIXES = Object.freeze(["extension/assets/"])
 const FORBIDDEN_FILE_PATTERNS = Object.freeze([
 	/\.(?:aihydropack|bak|log|map|qmd|tmp|trace|vsix)$/i,
 	/(?:^|\/)(?:screenshots?|test-results)(?:\/|$)/i,
@@ -82,11 +88,7 @@ function sha256(buffer) {
 }
 
 function isAllowedEntry(name) {
-	return (
-		ALLOWED_EXACT_FILES.has(name) ||
-		ALLOWED_ROOT_FILES.has(name) ||
-		ALLOWED_DIRECTORY_PREFIXES.some((prefix) => name.startsWith(prefix))
-	)
+	return ALLOWED_EXACT_FILES.has(name) || ALLOWED_ROOT_FILES.has(name)
 }
 
 function shouldReadEntry(name) {
@@ -248,6 +250,23 @@ export async function verifyDevelopmentVsix(vsixPath, expected = {}) {
 		)
 	}
 
+	const referencedManifestAssets = new Set()
+	function collectManifestAssets(value) {
+		if (typeof value === "string" && value.startsWith("assets/")) referencedManifestAssets.add(`extension/${value}`)
+		else if (Array.isArray(value)) value.forEach(collectManifestAssets)
+		else if (value && typeof value === "object") Object.values(value).forEach(collectManifestAssets)
+	}
+	collectManifestAssets(manifest)
+	const readmeText = selected.get("extension/readme.md").toString("utf8")
+	const referencedReadmeAssets = new Set(
+		[...readmeText.matchAll(/(?:src|srcset)="\.\/(assets\/[^"]+)"/g)].map((match) => `extension/${match[1]}`),
+	)
+	for (const referenced of [...referencedManifestAssets, ...referencedReadmeAssets]) {
+		if (!sizes.has(referenced)) {
+			throw new Error(`VSIX is missing a manifest- or README-referenced asset: ${referenced}`)
+		}
+	}
+
 	const identityText = selected.get("extension.vsixmanifest").toString("utf8")
 	const identityTag = identityText.match(/<Identity\s+([^>]+?)\s*\/>/)?.[1]
 	const identityAttributes = Object.fromEntries(
@@ -261,6 +280,27 @@ export async function verifyDevelopmentVsix(vsixPath, expected = {}) {
 		throw new Error("VSIX manifest identity does not match embedded package.json")
 	}
 
+	const schemaBytes = selected.get("extension/schemas/learning-pack/v1/pack.schema.json")
+	let packSchema
+	try {
+		packSchema = JSON.parse(schemaBytes.toString("utf8"))
+	} catch (error) {
+		throw new Error(`Packaged Learning Pack schema is not valid JSON: ${error.message}`)
+	}
+	const learningPackContract = Object.freeze({
+		packApi: packSchema.properties?.compatibility?.properties?.packApi?.const,
+		runtimeContract: packSchema.properties?.compatibility?.properties?.runtimeContract?.const,
+		schemaSha256: sha256(schemaBytes),
+		schemaVersion: packSchema.properties?.schemaVersion?.const,
+	})
+	if (
+		learningPackContract.schemaVersion !== 1 ||
+		learningPackContract.packApi !== 1 ||
+		learningPackContract.runtimeContract !== "html-preview-v1"
+	) {
+		throw new Error("Packaged Learning Pack schema does not declare the supported v1 contract tuple")
+	}
+
 	return Object.freeze({
 		artifact: path.basename(absolutePath),
 		bytes: archive.length,
@@ -270,6 +310,7 @@ export async function verifyDevelopmentVsix(vsixPath, expected = {}) {
 		sha256: sha256(archive),
 		version: manifest.version,
 		vscodeEngine: manifest.engines?.vscode,
+		learningPackContract,
 		learningPackCommands: REQUIRED_LEARNING_PACK_COMMANDS,
 	})
 }

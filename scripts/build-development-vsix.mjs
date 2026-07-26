@@ -140,6 +140,7 @@ async function main() {
 		buildTimeUtc: new Date().toISOString(),
 		extension: {
 			learningPackCommands: inspection.learningPackCommands,
+			learningPackContract: inspection.learningPackContract,
 			name: inspection.name,
 			publisher: inspection.publisher,
 			version: inspection.version,
