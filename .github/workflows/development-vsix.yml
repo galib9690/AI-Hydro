@@ -3,15 +3,6 @@ name: Development VSIX Artifact
 on:
   push:
     branches: [main]
-    paths:
-      - ".github/workflows/development-vsix.yml"
-      - ".nvmrc"
-      - ".vscodeignore"
-      - "package.json"
-      - "package-lock.json"
-      - "scripts/build-development-vsix.mjs"
-      - "scripts/verify-development-vsix.mjs"
-      - "scripts/verify-development-vsix.test.mjs"
   pull_request:
     branches: [main]
     paths:
