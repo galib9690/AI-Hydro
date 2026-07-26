@@ -636,6 +636,8 @@
 		"watch:esbuild": "node esbuild.mjs --watch",
 		"watch:tsc": "tsc --noEmit --watch --project tsconfig.json",
 		"package": "npm run check-types && npm run build:webview && npm run lint && node esbuild.mjs --production",
+		"package:vsix": "node scripts/build-development-vsix.mjs",
+		"test:vsix-contract": "node --test scripts/verify-development-vsix.test.mjs",
 		"protos": "node scripts/build-proto.mjs",
 		"download-ripgrep": "node scripts/download-ripgrep.mjs",
 		"postprotos": "biome format src/shared/proto src/core/controller src/hosts/ webview-ui/src/services src/generated --write --no-errors-on-unmatched",

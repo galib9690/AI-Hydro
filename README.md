@@ -265,7 +265,7 @@ Search for **"AI-Hydro"** in VS Code Extensions, or install from the [Marketplac
 
 **Option B — Install from `.vsix`**
 
-1. Download the latest `.vsix` from [Releases](https://github.com/AI-Hydro/AI-Hydro/releases)
+1. Download a compatible `.vsix` from [Releases](https://github.com/AI-Hydro/AI-Hydro/releases). Release assets may lag the Marketplace, so verify the extension version required by any Learning Pack before installation.
 2. In VS Code: `Extensions` > `...` > `Install from VSIX...`
 
 **Option C — Build from source**
@@ -273,9 +273,20 @@ Search for **"AI-Hydro"** in VS Code Extensions, or install from the [Marketplac
 ```bash
 git clone https://github.com/AI-Hydro/AI-Hydro.git
 cd AI-Hydro
-npm run install:all
-npm run package          # produces ai-hydro-*.vsix
+nvm use                  # Node.js 22
+npm ci
+(cd webview-ui && npm ci)
+npm run package:vsix     # emits a development VSIX, SHA256SUMS, and provenance under dist/
 ```
+
+This path uses the lock-installed VSIX tool and refuses nonempty publishing or build-time telemetry values. The
+VSIX secret scanner retains one documented exception for a benign `sendgrid` prompt example; the resulting archive
+is independently checked for common key formats and an explicit runtime-file inventory.
+
+This is a development build, and CI copies have finite retention. It is not a Marketplace release, durable
+distribution, publisher-identity attestation, functional extension-host test, or byte-reproducible-build proof. Its
+version may also be lower than the Marketplace version; use it only in the isolated profile/workspace specified by
+the controlled Learning Pack handoff, not as a general-user upgrade. `SHA256SUMS` covers the raw VSIX bytes only.
 
 ### Step 3 — Configure Your AI Provider
 
