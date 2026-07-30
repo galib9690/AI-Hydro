@@ -215,31 +215,74 @@ export class E2ETestHelper {
 		// Configure the normal OpenAI-compatible handler atomically through the
 		// E2E-only local control endpoint. The public provider form is covered by
 		// auth.test.ts; execution tests must never reach a real provider.
-		let response: Response | undefined
-		await expect
-			.poll(
-				async () => {
-					try {
-						response = await fetch("http://127.0.0.1:9876/e2e/local-provider", {
-							method: "POST",
-							headers: { "Content-Type": "application/json" },
-							body: "{}",
-						})
-						return response.status
-					} catch {
-						return 0
-					}
-				},
-				{ timeout: 30_000 },
-			)
-			.toBe(200)
-		if (!response?.ok) {
-			throw new Error(`Failed to configure local E2E provider: ${response?.status ?? "no response"}`)
+		const applyLocalProvider = async (): Promise<number> => {
+			try {
+				const response = await fetch("http://127.0.0.1:9876/e2e/local-provider", {
+					method: "POST",
+					headers: { "Content-Type": "application/json" },
+					body: "{}",
+				})
+				return response.status
+			} catch {
+				return 0
+			}
 		}
+		await expect.poll(applyLocalProvider, { timeout: 30_000 }).toBe(200)
 
 		// Verify the welcome page is no longer visible
 		await expect(welcomeHeading).not.toBeVisible()
 		await expect(providerSelector).not.toBeVisible()
+
+		// The welcome form writes whole provider snapshots through debounced
+		// inputs. Reapply after it unmounts so an in-flight stale form write
+		// cannot replace the loopback provider, then require the redacted
+		// effective state to remain exact for a stable interval.
+		await expect.poll(applyLocalProvider, { timeout: 30_000 }).toBe(200)
+
+		let stableSince = 0
+		await expect
+			.poll(
+				async () => {
+					try {
+						const response = await fetch("http://127.0.0.1:9876/e2e/local-provider-status")
+						if (!response.ok) {
+							stableSince = 0
+							return false
+						}
+						const status = (await response.json()) as {
+							planModeApiProvider?: string
+							actModeApiProvider?: string
+							openAiBaseUrl?: string
+							openAiApiKeyConfigured?: boolean
+							planModeOpenAiModelId?: string
+							actModeOpenAiModelId?: string
+							mode?: string
+						}
+						const matches =
+							status.planModeApiProvider === "openai" &&
+							status.actModeApiProvider === "openai" &&
+							status.openAiBaseUrl === "http://127.0.0.1:7777/api/v1" &&
+							status.openAiApiKeyConfigured === true &&
+							status.planModeOpenAiModelId === "mock-model" &&
+							status.actModeOpenAiModelId === "mock-model" &&
+							status.mode === "act"
+						if (!matches) {
+							stableSince = 0
+							await applyLocalProvider()
+							return false
+						}
+						if (stableSince === 0) {
+							stableSince = Date.now()
+						}
+						return Date.now() - stableSince >= 1_000
+					} catch {
+						stableSince = 0
+						return false
+					}
+				},
+				{ timeout: 30_000 },
+			)
+			.toBe(true)
 	}
 
 	public static async openAiHydroSidebar(page: Page): Promise<void> {

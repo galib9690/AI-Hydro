@@ -131,7 +131,40 @@ export async function createTestServer(controller: Controller): Promise<http.Ser
 		// file pickers or modal dialogs. This server exists only in explicit test mode.
 		const commandEndpoint = req.method === "POST" && req.url === "/learning-pack-command"
 		const localProviderEndpoint = req.method === "POST" && req.url === "/e2e/local-provider"
+		const localProviderStatusEndpoint = req.method === "GET" && req.url === "/e2e/local-provider-status"
 		const focusSidebarEndpoint = req.method === "POST" && req.url === "/e2e/focus-sidebar"
+
+		if (localProviderStatusEndpoint) {
+			if (!isIsolatedLocalE2E()) {
+				res.writeHead(403, { "Content-Type": "application/json" })
+				res.end(JSON.stringify({ error: "Local provider status is available only to isolated E2E tests" }))
+				return
+			}
+
+			const visibleWebview = WebviewProvider.getVisibleInstance()
+			if (!visibleWebview?.controller) {
+				res.writeHead(409, { "Content-Type": "application/json" })
+				res.end(JSON.stringify({ error: "No visible AI-Hydro instance found" }))
+				return
+			}
+
+			const testController = visibleWebview.controller
+			const currentConfig = testController.stateManager.getApiConfiguration()
+			res.writeHead(200, { "Content-Type": "application/json" })
+			res.end(
+				JSON.stringify({
+					planModeApiProvider: currentConfig.planModeApiProvider,
+					actModeApiProvider: currentConfig.actModeApiProvider,
+					openAiBaseUrl: currentConfig.openAiBaseUrl,
+					openAiApiKeyConfigured: Boolean(currentConfig.openAiApiKey),
+					planModeOpenAiModelId: currentConfig.planModeOpenAiModelId,
+					actModeOpenAiModelId: currentConfig.actModeOpenAiModelId,
+					mode: testController.stateManager.getGlobalSettingsKey("mode"),
+				}),
+			)
+			return
+		}
+
 		if (
 			req.method !== "POST" ||
 			(req.url !== "/task" && !commandEndpoint && !localProviderEndpoint && !focusSidebarEndpoint)
@@ -191,7 +224,10 @@ export async function createTestServer(controller: Controller): Promise<http.Ser
 						planModeOpenAiModelId: "mock-model",
 						actModeOpenAiModelId: "mock-model",
 					})
-					testController.stateManager.setGlobalState("welcomeViewCompleted", true)
+					testController.stateManager.setGlobalStateBatch({
+						welcomeViewCompleted: true,
+						mode: "act",
+					})
 					await testController.postStateToWebview()
 
 					res.writeHead(200, { "Content-Type": "application/json" })

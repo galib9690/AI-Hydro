@@ -1,7 +1,9 @@
 import { expect } from "@playwright/test"
 import { e2e } from "./utils/helpers"
 
-e2e.setTimeout(180_000)
+// The outer bound includes VS Code fixtures and provider stabilization. The
+// request-arrival and rendered-response phases retain their tighter bounds.
+e2e.setTimeout(240_000)
 
 e2e("Chat - can send messages and switch between modes", async ({ helper, sidebar, page, server }) => {
 	if (!server) {
