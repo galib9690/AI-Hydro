@@ -59,34 +59,27 @@ async function openWorkspaceFile(page: Page, relativePath: string, confirmPlainH
 	await page.locator(".monaco-workbench").waitFor({ state: "visible", timeout: 20_000 })
 	await E2ETestHelper.openAiHydroSidebar(page)
 	await waitForFrame(page, async (frame) => (await frame.title()).startsWith("AI-Hydro"))
-	await page.keyboard.press(process.platform === "darwin" ? "Meta+Shift+E" : "Control+Shift+E")
-	const explorer = page.locator(".part.sidebar.left")
-	await explorer.waitFor({ state: "visible", timeout: 10_000 })
-	const workspaceRoot = explorer.locator('[role="treeitem"][aria-level="1"]').first()
-	if ((await workspaceRoot.count()) > 0 && (await workspaceRoot.getAttribute("aria-expanded")) !== "true") {
-		await workspaceRoot.click()
-		await page.keyboard.press("ArrowRight")
-	}
-	const segments = relativePath.split("/")
-	for (const segment of segments.slice(0, -1)) {
-		const item = explorer.getByRole("treeitem", { name: segment, exact: true }).last()
-		await item.waitFor({ state: "visible", timeout: 10_000 })
-		if ((await item.getAttribute("aria-expanded")) !== "true") {
-			await item.click()
-			await page.keyboard.press("ArrowRight")
-		}
-	}
-	const file = explorer.getByRole("treeitem", { name: segments.at(-1), exact: true }).last()
-	await file.waitFor({ state: "visible", timeout: 10_000 })
+	await page.keyboard.press(process.platform === "darwin" ? "Meta+P" : "Control+P")
+	const quickOpenInput = page.locator(".quick-input-widget input")
+	await quickOpenInput.waitFor({ state: "visible", timeout: 30_000 })
+	await quickOpenInput.fill(relativePath)
+	const file = page
+		.locator(".quick-input-list .monaco-list-row")
+		.filter({ hasText: path.basename(relativePath) })
+		.first()
+	await expect(file).toBeVisible({ timeout: 30_000 })
+	await file.click()
 	if (confirmPlainHtml) {
-		await file.dblclick()
 		await page.keyboard.press("F1")
 		const commandInput = page.locator(".quick-input-widget input")
 		await commandInput.waitFor({ state: "visible", timeout: 10_000 })
-		await page.keyboard.type("Add to AI-Hydro HTML Preview")
-		await page.keyboard.press("Enter")
-	} else {
-		await file.dblclick()
+		await commandInput.fill(">Add to AI-Hydro HTML Preview")
+		const addToPreviewCommand = page
+			.locator(".quick-input-list .monaco-list-row")
+			.filter({ hasText: "Add to AI-Hydro HTML Preview" })
+			.first()
+		await expect(addToPreviewCommand).toBeVisible({ timeout: 30_000 })
+		await addToPreviewCommand.click()
 	}
 }
 
@@ -242,7 +235,7 @@ runtimeE2E("HTML Preview executes the golden runtime matrix @phase0-full", async
 
 	await openWorkspaceFile(page, "index.html", true)
 	await waitForFrame(page, async (frame) => (await frame.getByRole("heading", { name: "Test Workspace" }).count()) === 1)
-	await expect.poll(async () => countCourseOptions(page)).toBe(0)
+	await expect.poll(async () => countCourseOptions(page), { timeout: 30_000 }).toBe(0)
 	// A plain static doc (no executable module manifest) shows the
 	// static-document explanation in the shell (PR 3 / brief §8.2). The notice
 	// lives in the React shell frame, not the artifact iframe.
@@ -256,7 +249,7 @@ runtimeE2E("HTML Preview executes the golden runtime matrix @phase0-full", async
 	await openWorkspaceFile(page, "phase0/standalone-module.html")
 	artifact = await waitForCellFrame(page, "standalone-python")
 	await waitForShellWithSrcdoc(page, "standalone-runtime-fixture")
-	await expect.poll(async () => countCourseOptions(page)).toBe(0)
+	await expect.poll(async () => countCourseOptions(page), { timeout: 30_000 }).toBe(0)
 	await runCell(artifact, "standalone-python")
 	const standaloneOutput = artifact.locator('[data-aihydro-cell-id="standalone-python"] .aihydro-output')
 	await expect(standaloneOutput).toContainText("standalone_execution=ok", { timeout: 30_000 })
@@ -268,7 +261,7 @@ runtimeE2E("HTML Preview starts and executes a standalone module @phase0-smoke",
 	await openWorkspaceFile(page, "phase0/standalone-module.html")
 	const artifact = await waitForCellFrame(page, "standalone-python")
 	await waitForShellWithSrcdoc(page, "standalone-runtime-fixture")
-	await expect.poll(async () => countCourseOptions(page)).toBe(0)
+	await expect.poll(async () => countCourseOptions(page), { timeout: 30_000 }).toBe(0)
 	await runCell(artifact, "standalone-python")
 	const output = artifact.locator('[data-aihydro-cell-id="standalone-python"] .aihydro-output')
 	await expect(output).toContainText("standalone_execution=ok", { timeout: 60_000 })

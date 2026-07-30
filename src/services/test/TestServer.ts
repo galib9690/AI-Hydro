@@ -131,7 +131,11 @@ export async function createTestServer(controller: Controller): Promise<http.Ser
 		// file pickers or modal dialogs. This server exists only in explicit test mode.
 		const commandEndpoint = req.method === "POST" && req.url === "/learning-pack-command"
 		const localProviderEndpoint = req.method === "POST" && req.url === "/e2e/local-provider"
-		if (req.method !== "POST" || (req.url !== "/task" && !commandEndpoint && !localProviderEndpoint)) {
+		const focusSidebarEndpoint = req.method === "POST" && req.url === "/e2e/focus-sidebar"
+		if (
+			req.method !== "POST" ||
+			(req.url !== "/task" && !commandEndpoint && !localProviderEndpoint && !focusSidebarEndpoint)
+		) {
 			res.writeHead(404)
 			res.end(JSON.stringify({ error: "Not found" }))
 			return
@@ -147,6 +151,18 @@ export async function createTestServer(controller: Controller): Promise<http.Ser
 			try {
 				// Parse the JSON body
 				const parsedBody = JSON.parse(body)
+				if (focusSidebarEndpoint) {
+					if (!isIsolatedLocalE2E()) {
+						res.writeHead(403, { "Content-Type": "application/json" })
+						res.end(JSON.stringify({ error: "Sidebar focus is available only to isolated E2E tests" }))
+						return
+					}
+					await vscode.commands.executeCommand(`${ExtensionRegistryInfo.views.Sidebar}.focus`)
+					res.writeHead(200, { "Content-Type": "application/json" })
+					res.end(JSON.stringify({ focused: true }))
+					return
+				}
+
 				if (localProviderEndpoint) {
 					// The broad Playwright suite must execute through a real API
 					// handler without reaching an external model provider. Keep

@@ -19,8 +19,7 @@ e2e.describe("Diff Editor", () => {
 			await sidebar.getByTestId("send-button").click({ delay: 100 })
 			await expect(inputbox).toHaveValue("")
 
-			// Loading State initially
-			await expect(sidebar.getByText("API Request...")).toBeVisible()
+			// Assert the stable loopback response rather than a transient loading frame.
 			await expect(sidebar.getByText("Hello! I'm a mock AI-Hydro API response.").first()).toBeVisible({
 				timeout: 30_000,
 			})

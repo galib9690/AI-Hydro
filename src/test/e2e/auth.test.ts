@@ -20,13 +20,41 @@ e2e("Views - can set up API keys and navigate to Settings from Chat", async ({ p
 	// synthetic key cannot trigger OpenRouter's balance endpoint.
 	await expect(sidebar.getByRole("textbox", { name: "OpenRouter API Key" })).toHaveValue("")
 	await providerSelectorInput.click({ force: true })
-	await expect(sidebar.getByTestId("provider-option-gemini")).toBeVisible()
-	await sidebar.getByTestId("provider-option-gemini").click({ force: true })
+	const geminiOption = sidebar.getByTestId("provider-option-gemini")
+	await expect(geminiOption).toBeVisible()
+	await geminiOption.click({ force: true })
 	const apiKeyInput = sidebar.getByRole("textbox", {
 		name: "Gemini API Key",
 	})
-	await expect(apiKeyInput).toBeVisible()
-	await apiKeyInput.fill("test-api-key")
+	let keyFillCompleted = false
+	await expect
+		.poll(
+			async () => {
+				if (keyFillCompleted) {
+					return "test-api-key"
+				}
+				try {
+					if (await apiKeyInput.isVisible()) {
+						await apiKeyInput.fill("test-api-key", { timeout: 1_000 })
+						keyFillCompleted = true
+						return "test-api-key"
+					}
+					// Extension state can replace the provider form while startup
+					// settles. Re-select Gemini and operate on the current field.
+					if (await providerSelectorInput.isVisible()) {
+						await providerSelectorInput.click({ force: true, timeout: 1_000 })
+						if (await geminiOption.isVisible()) {
+							await geminiOption.click({ force: true, timeout: 1_000 })
+						}
+					}
+				} catch {
+					// Re-resolve the current controls on the next bounded poll.
+				}
+				return ""
+			},
+			{ timeout: 30_000 },
+		)
+		.toBe("test-api-key")
 	const submitButton = sidebar.getByRole("button", { name: "Let's go!" })
 	const chatInputBox = sidebar.getByTestId("chat-input")
 	let submitDispatched = false

@@ -243,7 +243,29 @@ export class E2ETestHelper {
 	}
 
 	public static async openAiHydroSidebar(page: Page): Promise<void> {
-		await page.getByRole("tab", { name: "AI-Hydro", exact: true }).locator("a").click()
+		// Focus through the extension host after activation instead of depending
+		// on activity-bar icon timing or overflow layout on hosted runners.
+		await expect
+			.poll(
+				async () => {
+					try {
+						const response = await fetch("http://127.0.0.1:9876/e2e/focus-sidebar", {
+							method: "POST",
+							headers: { "Content-Type": "application/json" },
+							body: "{}",
+						})
+						return response.status
+					} catch {
+						return 0
+					}
+				},
+				{ timeout: 30_000 },
+			)
+			.toBe(200)
+
+		await expect(page.getByRole("tab", { name: "AI-Hydro", exact: true })).toHaveAttribute("aria-selected", "true", {
+			timeout: 30_000,
+		})
 	}
 
 	public static async runCommandPalette(page: Page, command: string): Promise<void> {
