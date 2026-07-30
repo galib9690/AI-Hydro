@@ -1,7 +1,13 @@
 import { expect } from "@playwright/test"
 import { e2e } from "./utils/helpers"
 
-e2e("Chat - can send messages and switch between modes", async ({ helper, sidebar, page }) => {
+e2e.setTimeout(180_000)
+
+e2e("Chat - can send messages and switch between modes", async ({ helper, sidebar, page, server }) => {
+	if (!server) {
+		throw new Error("The deterministic loopback API server did not start")
+	}
+
 	// Sign in
 	await helper.signin(sidebar)
 
@@ -10,11 +16,14 @@ e2e("Chat - can send messages and switch between modes", async ({ helper, sideba
 	await expect(inputbox).toBeVisible()
 	await inputbox.fill("Hello, AI-Hydro!")
 	await expect(inputbox).toHaveValue("Hello, AI-Hydro!")
+	const generationBefore = server.generationCounter
 	await sidebar.getByTestId("send-button").click({ delay: 100 })
 	await expect(inputbox).toHaveValue("")
 
-	// The loopback provider can answer before the transient loading label is painted.
-	// The stable contract is the rendered response, not observation of an intermediate frame.
+	// On loaded Windows hosts, task initialization can take longer than the
+	// response render itself. Prove the request reached the deterministic
+	// loopback provider before asserting its stable rendered response.
+	await expect.poll(() => server.generationCounter, { timeout: 60_000 }).toBeGreaterThan(generationBefore)
 	await expect(sidebar.getByText("Hello! I'm a mock AI-Hydro API response.").first()).toBeVisible({
 		timeout: 30_000,
 	})
