@@ -60,7 +60,7 @@ async function openWorkspaceFile(page: Page, relativePath: string, confirmPlainH
 	await E2ETestHelper.openAiHydroSidebar(page)
 	await waitForFrame(page, async (frame) => (await frame.title()).startsWith("AI-Hydro"))
 	await page.keyboard.press(process.platform === "darwin" ? "Meta+P" : "Control+P")
-	const quickOpenInput = page.locator(".quick-input-widget input")
+	const quickOpenInput = page.locator(".quick-input-widget input:visible").last()
 	await quickOpenInput.waitFor({ state: "visible", timeout: 30_000 })
 	await quickOpenInput.fill(relativePath)
 	const file = page
@@ -75,7 +75,7 @@ async function openWorkspaceFile(page: Page, relativePath: string, confirmPlainH
 	await expect(quickOpenInput).not.toBeVisible({ timeout: 10_000 })
 	if (confirmPlainHtml) {
 		await page.keyboard.press("F1")
-		const commandInput = page.locator(".quick-input-widget input")
+		const commandInput = page.locator(".quick-input-widget input:visible").last()
 		await commandInput.waitFor({ state: "visible", timeout: 10_000 })
 		await commandInput.fill(">Add to AI-Hydro HTML Preview")
 		const addToPreviewCommand = page
@@ -83,7 +83,8 @@ async function openWorkspaceFile(page: Page, relativePath: string, confirmPlainH
 			.filter({ hasText: "Add to AI-Hydro HTML Preview" })
 			.first()
 		await expect(addToPreviewCommand).toBeVisible({ timeout: 30_000 })
-		await addToPreviewCommand.click()
+		await page.keyboard.press("Enter")
+		await expect(commandInput).not.toBeVisible({ timeout: 10_000 })
 	}
 }
 
@@ -282,7 +283,7 @@ runtimeE2E("AI-Hydro: Show Studio opens the panel with the Studio tab label @pha
 	await waitForFrame(page, async (frame) => (await frame.title()).startsWith("AI-Hydro"))
 
 	await page.keyboard.press("F1")
-	const commandInput = page.locator(".quick-input-widget input")
+	const commandInput = page.locator(".quick-input-widget input:visible").last()
 	await commandInput.waitFor({ state: "visible", timeout: 10_000 })
 	await commandInput.fill(">AI-Hydro: Show Studio")
 	const showStudioCommand = page
@@ -290,7 +291,8 @@ runtimeE2E("AI-Hydro: Show Studio opens the panel with the Studio tab label @pha
 		.filter({ hasText: "AI-Hydro: Show Studio" })
 		.first()
 	await expect(showStudioCommand).toBeVisible({ timeout: 30_000 })
-	await showStudioCommand.click()
+	await page.keyboard.press("Enter")
+	await expect(commandInput).not.toBeVisible({ timeout: 10_000 })
 
 	// The command is a display-title alias for the same reveal-or-create
 	// handler as the "HTML Preview" toolbar button — verify it actually
