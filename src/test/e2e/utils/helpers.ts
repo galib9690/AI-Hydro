@@ -134,7 +134,11 @@ export class E2ETestHelper {
 		}
 	}
 
-	public static async useTemporaryDirectory(prefix: string, use: (directory: string) => Promise<void>): Promise<void> {
+	public static async useTemporaryDirectory(
+		prefix: string,
+		use: (directory: string) => Promise<void>,
+		stableAbsenceMs = 1_000,
+	): Promise<void> {
 		const directory = mkdtempSync(path.join(os.tmpdir(), prefix))
 		let useFailure: unknown
 		try {
@@ -152,7 +156,7 @@ export class E2ETestHelper {
 				// Electron child processes can finish flushing storage just after
 				// the main process exits. Require a stable absent interval rather
 				// than accepting a directory that is immediately recreated.
-				await new Promise((resolve) => setTimeout(resolve, 1_000))
+				await new Promise((resolve) => setTimeout(resolve, stableAbsenceMs))
 				if (!existsSync(directory)) {
 					break
 				}
@@ -272,7 +276,7 @@ export class E2ETestHelper {
  * @extends test - Base Playwright test with multiple fixture extensions
  *
  * Fixtures provided:
- * - `server`: Per-test AiHydroApiServerMock instance with deterministic teardown
+ * - `server`: Per-worker AiHydroApiServerMock instance with deterministic teardown
  * - `workspaceDir`: Path to the test workspace directory
  * - `userDataDir`: Temporary directory for VS Code user data
  * - `extensionsDir`: Temporary directory for VS Code extensions
@@ -308,18 +312,20 @@ export class E2ETestHelper {
  * - Configures VS Code with disabled updates, workspace trust, and welcome screens
  */
 export const e2e = test
-	.extend<{ server: AiHydroApiServerMock | null }>({
-		server: async ({}, use) => {
-			// Start server if it doesn't exist
-			if (!AiHydroApiServerMock.globalSharedServer) {
-				await AiHydroApiServerMock.startGlobalServer()
-			}
-			try {
-				await use(AiHydroApiServerMock.globalSharedServer)
-			} finally {
-				await AiHydroApiServerMock.stopGlobalServer()
-			}
-		},
+	.extend<{}, { server: AiHydroApiServerMock | null }>({
+		server: [
+			async ({}, use) => {
+				if (!AiHydroApiServerMock.globalSharedServer) {
+					await AiHydroApiServerMock.startGlobalServer()
+				}
+				try {
+					await use(AiHydroApiServerMock.globalSharedServer)
+				} finally {
+					await AiHydroApiServerMock.stopGlobalServer()
+				}
+			},
+			{ scope: "worker" },
+		],
 	})
 	.extend<E2ETestDirectories>({
 		workspaceDir: async ({}, use) => {
@@ -336,7 +342,10 @@ export const e2e = test
 			await E2ETestHelper.useTemporaryDirectory("vsce", use)
 		},
 		homeDir: async ({}, use) => {
-			await E2ETestHelper.useTemporaryDirectory("aihydro-e2e-home-", use)
+			// Python/MCP children may flush a tiny version cache shortly after
+			// Electron exits. A longer HOME-only stability window catches and
+			// removes that delayed synthetic write without slowing other roots.
+			await E2ETestHelper.useTemporaryDirectory("aihydro-e2e-home-", use, 3_000)
 		},
 	})
 	.extend<E2ETestConfigs>({

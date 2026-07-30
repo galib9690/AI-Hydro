@@ -15,7 +15,7 @@ e2e("Views - can set up API keys and navigate to Settings from Chat", async ({ p
 	// Verify the current inline provider setup is visible.
 	await expect(welcomeHeading).toBeVisible()
 	await expect(providerSelectorInput).toBeVisible()
-	await expect(sidebar.getByRole("button", { name: "Let's go!" })).toBeDisabled()
+	await expect(sidebar.getByRole("button", { name: "Let's go!" })).toBeDisabled({ timeout: 30_000 })
 	// Let startup state migration finish before writing provider secrets. Without
 	// this guard, a first-run migration can observe the test key mid-write and
 	// legitimately advance past the welcome view before the button assertion.
@@ -34,7 +34,7 @@ e2e("Views - can set up API keys and navigate to Settings from Chat", async ({ p
 	await sidebar.waitForTimeout(250)
 	await apiKeyInput.fill("test-api-key")
 	const submitButton = sidebar.getByRole("button", { name: "Let's go!" })
-	await expect(submitButton).toBeEnabled()
+	await expect(submitButton).toBeEnabled({ timeout: 30_000 })
 	// The provider form rerenders its VS Code custom button as secret state is
 	// persisted. Dispatch the current control's DOM click so hosted runners do
 	// not race Playwright actionability against that legitimate replacement.
