@@ -68,7 +68,11 @@ async function openWorkspaceFile(page: Page, relativePath: string, confirmPlainH
 		.filter({ hasText: path.basename(relativePath) })
 		.first()
 	await expect(file).toBeVisible({ timeout: 30_000 })
-	await file.click()
+	// Keyboard acceptance is the stable Quick Open contract across hosted
+	// platforms. A synthetic row click can select the result without opening
+	// the document on Windows, so the extension never observes the HTML file.
+	await page.keyboard.press("Enter")
+	await expect(quickOpenInput).not.toBeVisible({ timeout: 10_000 })
 	if (confirmPlainHtml) {
 		await page.keyboard.press("F1")
 		const commandInput = page.locator(".quick-input-widget input")
