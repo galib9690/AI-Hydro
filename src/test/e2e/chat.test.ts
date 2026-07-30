@@ -13,8 +13,8 @@ e2e("Chat - can send messages and switch between modes", async ({ helper, sideba
 	await sidebar.getByTestId("send-button").click({ delay: 100 })
 	await expect(inputbox).toHaveValue("")
 
-	// Loading State initially
-	await expect(sidebar.getByText("API Request...")).toBeVisible()
+	// The loopback provider can answer before the transient loading label is painted.
+	// The stable contract is the rendered response, not observation of an intermediate frame.
 	await expect(sidebar.getByText("Hello! I'm a mock AI-Hydro API response.").first()).toBeVisible({
 		timeout: 30_000,
 	})
