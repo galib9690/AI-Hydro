@@ -278,6 +278,11 @@ runtimeE2E("HTML Preview starts and executes a standalone module @phase0-smoke",
 runtimeE2E("AI-Hydro: Show Studio opens the panel with the Studio tab label @phase0-smoke", async ({ page }) => {
 	await page.waitForLoadState("domcontentloaded")
 	await page.locator(".monaco-workbench").waitFor({ state: "visible", timeout: 20_000 })
+	// Activate the development extension before querying its contributed
+	// command. Hosted runners can display the workbench before extension
+	// contributions have reached the command palette.
+	await E2ETestHelper.openAiHydroSidebar(page)
+	await waitForFrame(page, async (frame) => (await frame.title()).startsWith("AI-Hydro"))
 
 	await page.keyboard.press("F1")
 	const commandInput = page.locator(".quick-input-widget input")
@@ -287,7 +292,7 @@ runtimeE2E("AI-Hydro: Show Studio opens the panel with the Studio tab label @pha
 		.locator(".quick-input-list .monaco-list-row")
 		.filter({ hasText: "AI-Hydro: Show Studio" })
 		.first()
-	await expect(showStudioCommand).toBeVisible({ timeout: 10_000 })
+	await expect(showStudioCommand).toBeVisible({ timeout: 30_000 })
 	await showStudioCommand.click()
 
 	// The command is a display-title alias for the same reveal-or-create

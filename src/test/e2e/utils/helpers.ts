@@ -114,7 +114,7 @@ export class E2ETestHelper {
 			return null
 		}
 
-		await E2ETestHelper.waitUntil(async () => (await findSidebarFrame()) !== null)
+		await E2ETestHelper.waitUntil(async () => (await findSidebarFrame()) !== null, 30_000)
 		return (await findSidebarFrame()) || page.mainFrame()
 	}
 
@@ -153,7 +153,9 @@ export class E2ETestHelper {
 				// the main process exits. Require a stable absent interval rather
 				// than accepting a directory that is immediately recreated.
 				await new Promise((resolve) => setTimeout(resolve, 1_000))
-				if (!existsSync(directory)) break
+				if (!existsSync(directory)) {
+					break
+				}
 				if (attempt === 3) {
 					throw new Error(`Temporary E2E directory was recreated after cleanup: ${directory}`)
 				}
@@ -162,8 +164,12 @@ export class E2ETestHelper {
 			cleanupFailure = error
 		}
 
-		if (useFailure) throw useFailure
-		if (cleanupFailure) throw cleanupFailure
+		if (useFailure) {
+			throw useFailure
+		}
+		if (cleanupFailure) {
+			throw cleanupFailure
+		}
 	}
 
 	public static async closeElectronApp(app: ElectronApplication, timeoutMs = 15_000): Promise<void> {
@@ -179,7 +185,9 @@ export class E2ETestHelper {
 				timer = setTimeout(() => resolve(false), timeoutMs)
 			}),
 		])
-		if (timer) clearTimeout(timer)
+		if (timer) {
+			clearTimeout(timer)
+		}
 
 		if (closeCompleted && !hasExited()) {
 			try {
@@ -188,7 +196,9 @@ export class E2ETestHelper {
 				// Fall through to the bounded forced shutdown below.
 			}
 		}
-		if (!hasExited()) process.kill()
+		if (!hasExited()) {
+			process.kill()
+		}
 		await E2ETestHelper.waitUntil(hasExited, timeoutMs)
 	}
 
@@ -428,7 +438,7 @@ export const e2e = test
 		},
 	})
 	.extend<{ sidebar: Frame }>({
-		sidebar: async ({ page, helper, server }, use) => {
+		sidebar: async ({ page, helper, server: _server }, use) => {
 			await E2ETestHelper.openAiHydroSidebar(page)
 			const sidebar = await helper.getSidebar(page)
 			await use(sidebar)

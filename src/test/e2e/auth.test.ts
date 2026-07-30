@@ -35,7 +35,10 @@ e2e("Views - can set up API keys and navigate to Settings from Chat", async ({ p
 	await apiKeyInput.fill("test-api-key")
 	const submitButton = sidebar.getByRole("button", { name: "Let's go!" })
 	await expect(submitButton).toBeEnabled()
-	await submitButton.click({ force: true })
+	// The provider form rerenders its VS Code custom button as secret state is
+	// persisted. Dispatch the current control's DOM click so hosted runners do
+	// not race Playwright actionability against that legitimate replacement.
+	await submitButton.evaluate((button: HTMLButtonElement) => button.click())
 
 	// Verify the welcome page is no longer visible
 	await expect(welcomeHeading).not.toBeVisible()

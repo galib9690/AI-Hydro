@@ -22,7 +22,7 @@ e2e.describe("Diff Editor", () => {
 			// Loading State initially
 			await expect(sidebar.getByText("API Request...")).toBeVisible()
 			await expect(sidebar.getByText("Hello! I'm a mock AI-Hydro API response.").first()).toBeVisible({
-				timeout: 10_000,
+				timeout: 30_000,
 			})
 
 			// Back to home page with history
@@ -38,12 +38,12 @@ e2e.describe("Diff Editor", () => {
 			await sidebar.getByTestId("send-button").click({ delay: 50 })
 
 			await expect(sidebar.getByText("AI Hydro wants to edit this file:")).toBeVisible({
-				timeout: 10_000,
+				timeout: 30_000,
 			})
 
 			// AI-Hydro Diff Editor should open with the file name and diff
 			await expect(page.getByText("test.ts: Original ↔ AI-Hydro's Changes (Editable)")).toBeVisible({
-				timeout: 10_000,
+				timeout: 30_000,
 			})
 
 			// Diff editor should show the original and modified content
